@@ -1,3 +1,0 @@
-[console_scripts]
-sylphy = sylphy.app:main
-sylphy-benchmark = sylphy.benchmark:main
