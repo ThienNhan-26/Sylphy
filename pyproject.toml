@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sylphy"
+version = "0.1.0"
+description = "Local-first AI companion foundation"
+requires-python = ">=3.10"
+dependencies = ["ollama>=0.6,<1", "Pillow>=10,<13", "tomli>=2; python_version < '3.11'"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "numpy>=1.26,<3"]
+vision = ["opencv-python-headless>=4.9,<5"]
+voice = [
+    "faster-whisper>=1.2,<2",
+    "kokoro-onnx>=0.6,<1",
+    "sounddevice>=0.5,<1",
+    "webrtcvad-wheels>=2,<3",
+]
+
+[project.scripts]
+sylphy = "sylphy.app:main"
+sylphy-benchmark = "sylphy.benchmark:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not integration'"
+markers = ["integration: requires a running local Ollama server and installed model"]
