@@ -1,0 +1,35 @@
+# SYLPHY Reference Decisions — G0 Baseline
+
+This document records only verified decisions made during G0 (Stabilization & Source Control).
+Each entry distinguishes between a **SYLPHY-specific design decision**, a **general engineering principle**, and a **verified reference implementation** (only where source or documentation supports the attribution).
+
+No decision is attributed to Mark VII or Animama unless the relevant source or documentation supports it.
+
+## Decision Log
+
+| Decision | Implementation | Reference | Evidence | Status |
+|---|---|---|---|---|
+| `numpy` declared as a test dependency (dev extra) | `[project.optional-dependencies] dev = ["pytest>=8,<10", "numpy>=1.26,<3"]` | `pyproject.toml` line 13 | `pyproject.toml` in canonical repo; `tests/test_voice.py` imports `numpy as np` and uses it in `_pcm_to_float` conversion and array assertions | Verified |
+| `tomli` fallback for Python 3.10 (no stdlib `tomllib`) | `try: import tomllib except ModuleNotFoundError: import tomli as tomllib` | `src/sylphy/config.py` lines 12-15 | Source code: `config.py` imports `tomllib` with `tomli` fallback; `pyproject.toml` declares `tomli>=2; python_version < '3.11'` | Verified |
+| `data/` directory excluded from Git | `data/` in `.gitignore` | `.gitignore` line 10 | `.gitignore` created in canonical repo; `data/sylphy.sqlite3` removed from Git tracking (kept on disk) | Verified |
+| `logs/` directory excluded from Git | `logs/` in `.gitignore` | `.gitignore` line 11 | `.gitignore` created in canonical repo; `logs/sylphy.log` removed from Git tracking (kept on disk) | Verified |
+| Python bytecode caches excluded from Git | `__pycache__/`, `*.py[cod]` in `.gitignore` | `.gitignore` lines 3-4 | `.gitignore` created; `__pycache__/` directories removed from Git tracking | Verified |
+| Build artifacts excluded from Git | `*.egg-info/` in `.gitignore` | `.gitignore` line 9 | `.gitignore` created; `src/sylphy.egg-info/` removed from Git tracking | Verified |
+| Pytest integration tests excluded by default | `addopts = "-m 'not integration'"` with `markers = ["integration: requires a running local Ollama server and installed model"]` | `pyproject.toml` lines 31-32 | `pyproject.toml`; test collection shows 314/315 collected (1 integration test deselected) | Verified |
+| Ollama as the local model provider | `from ollama import Client` in `OllamaProvider` | `src/sylphy/ollama_provider.py` line 7 | Source code; `ollama>=0.6,<1` in runtime dependencies | Verified |
+| SQLite for durable session/message/memory storage | `SQLiteStore` class using `sqlite3` module | `src/sylphy/storage.py` lines 3, 21-62 | Source code; database path configurable via `config.toml` `[sylphy].data_dir` and `database_name` | Verified |
+| Voice is opt-in at runtime | `VoiceConfig(enabled=False)` default; `VoiceService.start()` raises `VoiceError("Voice is disabled...")` when `config.enabled` is False | `src/sylphy/voice.py` lines 38-61, 90-92; `tests/test_voice.py::test_disabled_voice_does_not_start_or_open_microphone` | Source code and test | Verified |
+| Memory retrieval failure does not block conversation | `logger.exception("Memory retrieval failed; continuing without retrieved memories")` and empty list fallback | `src/sylphy/context.py` lines 103-109 | Source code; test `test_context_continues_when_memory_retrieval_fails` | Verified |
+| Cognition candidates are never confirmed automatically | `CognitionService.analyze()` returns `MemoryCandidate` objects with `status="pending"`; confirmation requires explicit user action via `/cognition confirm <id>` | `src/sylphy/cognition.py` lines 76-185 | Source code | Verified |
+| Avatar surface failures are isolated from Runtime | `AvatarController` catches `Exception` from surface, sets `_available = False`, logs warning, does not propagate to Runtime | `src/sylphy/avatar.py` lines 76-106 | Source code | Verified |
+| Local loopback-only Ollama endpoint for vision | `_require_loopback_host()` rejects non-loopback, non-HTTP, credential-bearing endpoints | `src/sylphy/vision.py` lines 306-332 | Source code | Verified |
+
+## Decision Classification Notes
+
+- **Verified reference implementation**: No entries in this baseline are attributed to Mark VII or Animama as verified reference implementations. The source code and documentation available do not support such attribution for any G0 decision.
+- **General engineering principle**: Entries such as excluding caches/logs/databases from version control, isolating optional subsystem failures, and making voice opt-in reflect general engineering principles applied within SYLPHY's own design.
+- **SYLPHY-specific design decision**: Most entries are SYLPHY-specific, including the `tomli` fallback for Python 3.10, Ollama as the model provider, SQLite persistence schema, pytest integration marker exclusion, and the `.gitignore` content.
+
+## Attestation
+
+No decision in this document is claimed to originate from Mark VII or Animama unless the relevant source or documentation directly supports it. Where a pattern aligns with general engineering practice (e.g., "do not commit user data," "isolate optional subsystem failures"), it is classified as a general engineering principle applied within SYLPHY's design, not as a copied reference implementation.
