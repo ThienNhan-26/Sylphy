@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#11131a" />
+    <title>Sylphy Avatar Runtime</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">S</span><div><strong>SYLPHY</strong><small>AVATAR RUNTIME · R4</small></div></div>
+        <div id="entity-connection" class="status" title="Entity connection">Entity: checking</div><div class="desktop-controls" style="display:none"><button id="desktop-minimize" title="Hide (Ctrl+Shift+S)">−</button><button id="desktop-topmost" title="Toggle always on top">⌃</button><button id="desktop-hide" title="Hide Avatar">×</button></div><div id="runtime-status" class="status"><i></i><span>Renderer initializing</span></div>
+      </header>
+      <main>
+        <section class="stage">
+          <canvas id="avatar-canvas"></canvas>
+          <div class="stage-overlay">
+            <div class="stage-title">EMBODIMENT PREVIEW <span>VRM 1.0</span></div>
+            <div id="empty-state" class="empty-state">
+              <div class="orb">✦</div>
+              <h1>Give Sylphy a form.</h1>
+              <p>Load a local VRM avatar to begin the 3D runtime preview.</p>
+              <label class="load-button" for="vrm-file">Load VRM model</label>
+              <input id="vrm-file" type="file" accept=".vrm,model/gltf-binary" />
+              <small>Model stays in this browser session. No upload is performed.</small>
+            </div>
+            <div id="model-info" class="model-info" hidden></div>
+            <div id="error-box" class="error-box" hidden></div>
+          </div>
+          <div class="stage-footer"><span>THREE.JS + @PIXIV/THREE-VRM</span><span id="fps">-- FPS</span></div>
+        </section>
+        <aside class="inspector">
+          <section><label>RUNTIME</label><div class="metric"><span>Renderer</span><strong id="renderer-value">WebGL</strong></div><div class="metric"><span>Character</span><strong id="character-value">Not loaded</strong></div><div class="metric"><span>Frame rate</span><strong id="fps-value">--</strong></div></section>
+          <section><label>CAPABILITIES</label><div class="capability"><i class="ok"></i> VRM loader</div><div class="capability"><i class="pending" id="expression-capability"></i> Expression controller</div><div class="capability"><i class="pending" id="humanoid-capability"></i> Humanoid bone mapping</div>
+          <div class="capability"><i class="pending" id="animation-capability"></i> Procedural motion runtime</div>
+          <div class="capability"><i class="pending" id="body-pose-capability"></i> Relaxed arm pose + gestures</div><div class="capability"><i class="pending"></i> Entity event bridge</div></section>
+          <section><label>MOTION PREVIEW</label>
+            <div id="motion-status" class="hint">Load a VRM to enable motion preview.</div>
+            <div class="expression-grid behavior-grid">
+              <button data-behavior="idle" disabled>Idle / Breathing</button><button data-behavior="processing" disabled>Processing</button>
+              <button data-behavior="reacting" disabled>Reacting</button><button data-behavior="speaking" disabled>Speaking pose</button>
+              <button data-behavior="interrupted" disabled>Interrupted</button><button data-behavior="paused" disabled>Pause motion</button>
+            </div>
+            <div class="expression-grid secondary"><button id="resume-behavior" disabled>Resume Idle</button><button id="gaze-reset" disabled>Reset gaze</button></div>
+            <p class="hint">Idle breathing and arm pose start automatically after loading. Each behavior uses a distinct procedural arm and head profile; clothing collision still depends on the VRM model geometry.</p>
+          </section>
+          <section><label>EXPRESSION TEST</label><div class="expression-grid">
+            <button data-mood="neutral" disabled>Neutral</button><button data-mood="happy" disabled>Happy</button>
+            <button data-mood="sad" disabled>Sad</button><button data-mood="surprised" disabled>Surprised</button>
+            <button data-mood="angry" disabled>Angry</button><button data-mood="relaxed" disabled>Relaxed</button>
+          </div><div class="expression-grid secondary"><button id="blink-test" disabled>Blink</button><button id="clear-expression" disabled>Clear</button></div><p class="hint">Manual local preview only. These controls do not send commands to the Entity.</p></section>
+          <section><label>ANIMATION CLIP REGISTRY</label><div class="metric"><span>Available clips</span><strong id="clip-count">0</strong></div><div id="clip-list" class="clip-list hint">No embedded animation clips found in this model.</div></section>
+          <section><label>HUMANOID RIG</label><div class="metric"><span>Mapped bones</span><strong id="bone-count">--</strong></div><div id="bone-summary" class="hint">Load a VRM to inspect its normalized skeleton.</div></section>
+          <section><label>MODEL CONTROLS</label><button id="reset-camera" disabled>Reset camera</button><button id="unload-model" disabled>Unload model</button><p class="hint">R4 preview: procedural arm pose, gaze, blink and expressions. Entity IPC and playback-clock lip-sync remain separate integration work.</p></section>
+        </aside>
+      </main>
+      <footer class="footer">SYLPHY ENTITY · PRESENTATION PROCESS · LOCAL FIRST</footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

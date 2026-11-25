@@ -30,7 +30,7 @@ def _memory_command(text: str, memories: MemoryService | None, session_id: str, 
     command = parts[1].casefold() if len(parts) > 1 else "help"
     argument = parts[2] if len(parts) > 2 else ""
     if command == "help":
-        print("Memory: /memory list | search <query> | add <content> | update <id> <content> | delete <id>")
+        print("Memory: /memory list | search <query> | add <content> | update <id> <content> | history <id> | delete <id>")
         return
     if memories is None:
         print("Memory is disabled in config.toml.")
@@ -55,7 +55,8 @@ def _memory_command(text: str, memories: MemoryService | None, session_id: str, 
         messages = store.messages(session_id)
         source = next((message.id for message in reversed(messages) if message.role == "user"), None)
         try:
-            item = memories.create(argument, source_session_id=session_id, source_message_id=source)
+            item = memories.create(argument, source_session_id=session_id, source_message_id=source,
+                                   origin="manual")
             if runtime:
                 runtime.memory_operation("created", item.id)
             print(f"Memory saved: {item.id}")
@@ -67,11 +68,22 @@ def _memory_command(text: str, memories: MemoryService | None, session_id: str, 
             print("Usage: /memory update <id> <content>")
             return
         try:
-            item = memories.update(update_parts[0], update_parts[1])
+            item = memories.update(update_parts[0], update_parts[1], correction_origin="manual",
+                                   correction_source_session_id=session_id)
             if runtime:
                 runtime.memory_operation("updated", item.id)
             print(f"Memory updated: {item.id}")
         except (KeyError, ValueError) as exc:
+            print(exc)
+    elif command == "history":
+        try:
+            revisions = memories.history(argument)
+            for revision in revisions:
+                print(f"{revision.revision_at.isoformat()} | {revision.category} | "
+                      f"{revision.content} | correction={revision.correction_origin}")
+            if not revisions:
+                print("No correction history.")
+        except KeyError as exc:
             print(exc)
     elif command == "delete":
         try:
@@ -462,6 +474,9 @@ def main() -> None:
     runtime = Runtime(config.ollama_model, config.max_concurrent_generations,
                       config.heartbeat_enabled, config.heartbeat_interval_seconds,
                       config.presence_enabled, config.presence_queue_capacity)
+    runtime.companion_enabled = config.companion_enabled
+    runtime.autonomy_enabled = config.autonomy_enabled
+    runtime.initiative_enabled = config.initiative_enabled
     avatar = AvatarController(config.avatar)
     runtime.configure_avatar(avatar)
     if config.avatar.config_error:

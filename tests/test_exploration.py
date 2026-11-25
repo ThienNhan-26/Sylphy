@@ -305,7 +305,7 @@ def test_runtime_enqueues_after_turn_persistence_and_returns_while_exploration_r
 
     class Provider:
         def reply(self, messages, cancel=None, on_chunk=None):
-            if messages[0]["content"] == "system":
+            if "Configured identity:" in messages[0]["content"]:
                 return "A completed answer"
             entered.set()
             release.wait(2)
@@ -346,7 +346,7 @@ def test_conversation_preempts_exploration_and_gets_shared_slot(tmp_path):
 
     class Provider:
         def reply(self, messages, cancel=None, on_chunk=None):
-            if messages[0]["content"] == "system":
+            if "Configured identity:" in messages[0]["content"]:
                 return "foreground answer"
             explore_entered.set()
             release_explore.wait(2)
@@ -413,7 +413,7 @@ def test_exploration_failure_does_not_invalidate_completed_conversation(tmp_path
 
     class Provider:
         def reply(self, messages, cancel=None, on_chunk=None):
-            if messages[0]["content"] == "system":
+            if "Configured identity:" in messages[0]["content"]:
                 return "saved response"
             failed.set()
             raise RuntimeError("local model unavailable")

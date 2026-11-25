@@ -171,6 +171,13 @@ class CognitionService:
         return self._repository.list_candidates()
 
     def confirm(self, candidate_id: str) -> Memory:
+        # SQLiteStore provides one transaction for the memory insert and the
+        # candidate state change. Keep the prior protocol path for third-party
+        # repositories that have not implemented the optional atomic method.
+        atomic_confirm = getattr(self._repository, "confirm_candidate_memory", None)
+        if callable(atomic_confirm):
+            return atomic_confirm(candidate_id)
+
         candidate = self._repository.get_candidate(candidate_id)
         if candidate is None:
             raise KeyError(f"Candidate not found: {candidate_id}")
@@ -180,7 +187,8 @@ class CognitionService:
             raise ValueError(f"Candidate is {candidate.status}")
         memory = self._memories.create(candidate.content, candidate.category, candidate.source_session_id,
                                        candidate.source_message_ids[-1] if candidate.source_message_ids else None,
-                                       candidate.confidence)
+                                       candidate.confidence, origin="confirmed_candidate",
+                                       source_message_ids=candidate.source_message_ids)
         self._repository.transition_candidate(candidate_id, "confirmed")
         return memory
 

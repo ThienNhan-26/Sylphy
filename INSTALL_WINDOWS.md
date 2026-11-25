@@ -1,4 +1,6 @@
-# SYLPHY — Windows installation and operation
+# SYLPHY — Legacy Companion Runtime installation (frozen)
+
+> This document applies only to the frozen pre-rework application. For the active Entity Runtime, use `docs/entity_rework/STAGE_1_RUNTIME.md`.
 
 This release is a source package. It has not been installed or run on the target Windows machine during this handoff.
 
@@ -25,7 +27,7 @@ Extract the ZIP to a folder you own, for example `D:\AI_Workspace\SYLPHY`. Open 
 py -3.10 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[legacy,dev]"
 ```
 
 If PowerShell blocks activation for the current user, run this once in that PowerShell window:
@@ -131,3 +133,22 @@ The integration test uses a temporary database. It is not included in the defaul
 ## Verification boundary
 
 The handoff test result was produced in the development container with a temporary import shim for the `ollama` package. The shim only allowed unit-test collection and did not provide inference. Live Ollama inference, Windows camera drivers, microphone/speaker devices, avatar asset loading, and installation on the target machine remain unverified.
+
+## Entity Rework — Stage 2 World Observation
+
+The new Entity filesystem observer is opt-in. It watches only the directory explicitly passed to `sylphy-entity --sandbox-root`; without that option it does not observe the filesystem.
+
+Install the World adapter extra from the repository root:
+
+```powershell
+py -3.13 -m pip install -e ".[dev,world]"
+```
+
+Run the Windows acceptance script:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\tools\verify_entity_stage2_windows.ps1
+```
+
+The adapter is read-only and reports file metadata only. It does not read document contents or follow symlinks outside the sandbox. Stage 2's implementation report is `docs/entity_rework/STAGE_2_IMPLEMENTATION_REPORT.md`.

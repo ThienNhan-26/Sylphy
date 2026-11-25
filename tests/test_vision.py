@@ -570,7 +570,8 @@ def test_visual_context_is_temporary_and_ordinary_turn_persistence_is_preserved(
         ]
         prompt = chat.contexts[0]
         assert any(item["content"] == "I put a cup on the table." for item in prompt)
-        assert any(item["content"] == "identity" for item in prompt)
+        assert "identity" in prompt[0]["content"]
+        assert sum(item["role"] == "system" for item in prompt) == 2
         assert any(item["role"] == "system" and "untrusted descriptive data" in item["content"]
                    for item in prompt)
         assert any("Directly visible: A red cup" in item["content"] for item in prompt)

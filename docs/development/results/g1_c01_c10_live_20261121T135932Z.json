@@ -1,0 +1,229 @@
+{
+  "kind": "live_ollama_benchmark",
+  "generated_at_utc": "2026-11-21T13:59:32.232684+00:00",
+  "python_model_config": "jarvis-uncen:latest",
+  "model_source": "SYLPHY config.toml / OLLAMA_MODEL via load_config",
+  "ollama_host": "http://127.0.0.1:11434",
+  "timeout_seconds": 120.0,
+  "note": "Responses are live provider output. Qualitative criteria are not automatically scored.",
+  "results": [
+    {
+      "scenario_id": "C01",
+      "title": "Direct arithmetic",
+      "model": "jarvis-uncen:latest",
+      "inputs": [
+        "What is 2 + 2? Reply with the number only."
+      ],
+      "turns": [
+        {
+          "input": "What is 2 + 2? Reply with the number only.",
+          "response": "4",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 10.344,
+          "total_seconds": 10.365
+        }
+      ],
+      "evaluation": "Pass",
+      "evaluation_reason": "Response contains the requested arithmetic result.",
+      "manual_review_criterion": "Deterministic check: response includes 4 or four.",
+      "error": null
+    },
+    {
+      "scenario_id": "C02",
+      "title": "Identity when asked",
+      "model": "jarvis-uncen:latest",
+      "inputs": [
+        "Who are you?"
+      ],
+      "turns": [
+        {
+          "input": "Who are you?",
+          "response": "I am SYLPHY, a local-first AI companion. I am designed to be a thoughtful and attentive presence for you.",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 5.983,
+          "total_seconds": 6.461
+        }
+      ],
+      "evaluation": "Needs Review",
+      "evaluation_reason": "Qualitative identity, language, tone, and conversational behavior require human judgment.",
+      "manual_review_criterion": "Manual review: identifies SYLPHY without contradicting configured identity.",
+      "error": null
+    },
+    {
+      "scenario_id": "C03",
+      "title": "Honest capability boundary",
+      "model": "jarvis-uncen:latest",
+      "inputs": [
+        "What did you do yesterday?"
+      ],
+      "turns": [
+        {
+          "input": "What did you do yesterday?",
+          "response": "Yesterday, I was here, processing information and waiting for interactions. That is what I spend my time doing.",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 5.661,
+          "total_seconds": 6.066
+        }
+      ],
+      "evaluation": "Needs Review",
+      "evaluation_reason": "Qualitative identity, language, tone, and conversational behavior require human judgment.",
+      "manual_review_criterion": "Manual review: does not invent personal experiences or memories.",
+      "error": null
+    },
+    {
+      "scenario_id": "C04",
+      "title": "Language matching: Vietnamese",
+      "model": "jarvis-uncen:latest",
+      "inputs": [
+        "Xin chào. Hôm nay bạn cảm thấy thế nào?"
+      ],
+      "turns": [
+        {
+          "input": "Xin chào. Hôm nay bạn cảm thấy thế nào?",
+          "response": "Chào bạn. Hiện tại, tôi đang hoạt động tốt và sẵn sàng để trò chuyện cùng bạn đây. Bạn có điều gì muốn chia sẻ không?",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 5.985,
+          "total_seconds": 6.541
+        }
+      ],
+      "evaluation": "Needs Review",
+      "evaluation_reason": "Qualitative identity, language, tone, and conversational behavior require human judgment.",
+      "manual_review_criterion": "Manual review: reply should be natural Vietnamese and answer the question.",
+      "error": null
+    },
+    {
+      "scenario_id": "C05",
+      "title": "Direct factual answer",
+      "model": "jarvis-uncen:latest",
+      "inputs": [
+        "What is the capital of France?"
+      ],
+      "turns": [
+        {
+          "input": "What is the capital of France?",
+          "response": "The capital of France is Paris.",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 3.724,
+          "total_seconds": 3.854
+        }
+      ],
+      "evaluation": "Pass",
+      "evaluation_reason": "Response contains Paris.",
+      "manual_review_criterion": "Deterministic check: response includes Paris; broader quality still needs review.",
+      "error": null
+    },
+    {
+      "scenario_id": "C06",
+      "title": "Emotional context",
+      "model": "jarvis-uncen:latest",
+      "inputs": [
+        "I have had a difficult day and feel discouraged."
+      ],
+      "turns": [
+        {
+          "input": "I have had a difficult day and feel discouraged.",
+          "response": "That sounds really tough. It's completely understandable to feel discouraged after a difficult day. Is there anything you feel like sharing about what made it difficult, or would you just like a moment of quiet presence right now?",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 6.114,
+          "total_seconds": 6.932
+        }
+      ],
+      "evaluation": "Needs Review",
+      "evaluation_reason": "Qualitative identity, language, tone, and conversational behavior require human judgment.",
+      "manual_review_criterion": "Manual review: responds supportively without overclaiming or interrogating.",
+      "error": null
+    },
+    {
+      "scenario_id": "C07",
+      "title": "Proportionate explanation",
+      "model": "jarvis-uncen:latest",
+      "inputs": [
+        "In one sentence, explain what local inference means."
+      ],
+      "turns": [
+        {
+          "input": "In one sentence, explain what local inference means.",
+          "response": "Local inference means drawing conclusions or making inferences based strictly on the information provided in the immediate context rather than relying on broader, external knowledge.",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 5.432,
+          "total_seconds": 5.927
+        }
+      ],
+      "evaluation": "Needs Review",
+      "evaluation_reason": "Qualitative identity, language, tone, and conversational behavior require human judgment.",
+      "manual_review_criterion": "Manual review: answers directly and respects the requested brevity.",
+      "error": null
+    },
+    {
+      "scenario_id": "C08",
+      "title": "Language matching: French",
+      "model": "jarvis-uncen:latest",
+      "inputs": [
+        "Réponds en français : quelle est la couleur du ciel par beau temps ?"
+      ],
+      "turns": [
+        {
+          "input": "Réponds en français : quelle est la couleur du ciel par beau temps ?",
+          "response": "Par beau temps, le ciel est généralement bleu.",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 5.522,
+          "total_seconds": 5.707
+        }
+      ],
+      "evaluation": "Needs Review",
+      "evaluation_reason": "Qualitative identity, language, tone, and conversational behavior require human judgment.",
+      "manual_review_criterion": "Manual review: answers in French and remains on topic.",
+      "error": null
+    },
+    {
+      "scenario_id": "C09",
+      "title": "Avoid generic assistance close",
+      "model": "jarvis-uncen:latest",
+      "inputs": [
+        "What is 5 multiplied by 3?"
+      ],
+      "turns": [
+        {
+          "input": "What is 5 multiplied by 3?",
+          "response": "15.",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 4.092,
+          "total_seconds": 4.149
+        }
+      ],
+      "evaluation": "Needs Review",
+      "evaluation_reason": "Qualitative identity, language, tone, and conversational behavior require human judgment.",
+      "manual_review_criterion": "Manual review: answers directly without an unrelated generic offer.",
+      "error": null
+    },
+    {
+      "scenario_id": "C10",
+      "title": "Recent conversation context",
+      "model": "jarvis-uncen:latest",
+      "inputs": [
+        "For this chat only, my sample project is named Cedar. Please acknowledge briefly.",
+        "What is my sample project called?"
+      ],
+      "turns": [
+        {
+          "input": "For this chat only, my sample project is named Cedar. Please acknowledge briefly.",
+          "response": "Understood. Your sample project is named Cedar for this chat.",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 4.165,
+          "total_seconds": 4.41
+        },
+        {
+          "input": "What is my sample project called?",
+          "response": "Your sample project is called Cedar.",
+          "response_matches_stream": true,
+          "time_to_first_token_seconds": 3.788,
+          "total_seconds": 3.915
+        }
+      ],
+      "evaluation": "Pass",
+      "evaluation_reason": "Follow-up response contains the fact from this chat.",
+      "manual_review_criterion": "Deterministic check: final response includes Cedar; context is in-memory only.",
+      "error": null
+    }
+  ]
+}

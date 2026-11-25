@@ -1,0 +1,15 @@
+SYLPHY Stage 7 - Sensor Slice 4A Foundation Patch
+
+1. Back up the current sylphy_work directory.
+2. Extract this ZIP into the repository root and allow matching files to be overwritten.
+3. From PowerShell in the repository root, run:
+
+   py -3.13 -m pip install -e ".[dev,world,cognition]"
+   powershell -ExecutionPolicy Bypass -File .\tools\verify_entity_stage7_sensor_slice4a_windows.ps1
+
+Expected final marker:
+   PASS: Stage 7 Sensor Slice 4A Windows acceptance completed
+
+This slice does NOT open camera or microphone hardware. Sensor consent is in-memory
+and fail-closed across daemon restarts. Real camera and microphone drivers are later
+slices and must remain disabled until explicit consent is granted.

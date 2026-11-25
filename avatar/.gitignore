@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.vite/
+
+# TypeScript build metadata
+*.tsbuildinfo
+
+# Local diagnostics
+*.log
+
+# Temporary Electron installation diagnostics
+electron_*_test.cjs

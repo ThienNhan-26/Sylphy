@@ -41,6 +41,9 @@ class AppConfig:
     cognition_shutdown_grace_seconds: float
     presence_enabled: bool
     presence_queue_capacity: int
+    companion_enabled: bool
+    autonomy_enabled: bool
+    initiative_enabled: bool
     exploration_enabled: bool
     exploration_max_queue_items: int
     exploration_cooldown_seconds: float
@@ -91,6 +94,7 @@ def load_config(path: Path | None = None) -> AppConfig:
     cognition = raw.get("cognition", {})
     presence = raw.get("presence", {})
     exploration = raw.get("exploration", {})
+    companion = raw.get("companion", {})
     investigation = raw.get("investigation", {})
     web_search = raw.get("web_search", {})
     web_reader = raw.get("web_reader", {})
@@ -110,6 +114,17 @@ def load_config(path: Path | None = None) -> AppConfig:
     cognition_shutdown_grace = float(cognition.get("shutdown_grace_seconds", 5))
     presence_enabled = presence.get("enabled", False)
     presence_capacity = int(presence.get("queue_capacity", 20))
+    companion_enabled = companion.get("enabled", False)
+    if not isinstance(companion_enabled, bool):
+        raise ValueError("companion.enabled must be a boolean")
+    autonomy = raw.get("autonomy", {})
+    autonomy_enabled = autonomy.get("enabled", False)
+    if not isinstance(autonomy_enabled, bool):
+        raise ValueError("autonomy.enabled must be a boolean")
+    initiative = raw.get("initiative", {})
+    initiative_enabled = initiative.get("enabled", False)
+    if not isinstance(initiative_enabled, bool):
+        raise ValueError("initiative.enabled must be a boolean")
     exploration_enabled = exploration.get("enabled", False)
     exploration_queue = exploration.get("max_queue_items", 20)
     exploration_cooldown = exploration.get("cooldown_seconds", 3600)
@@ -266,6 +281,9 @@ def load_config(path: Path | None = None) -> AppConfig:
         cognition_shutdown_grace_seconds=cognition_shutdown_grace,
         presence_enabled=presence_enabled,
         presence_queue_capacity=presence_capacity,
+        companion_enabled=companion_enabled,
+        autonomy_enabled=autonomy_enabled,
+        initiative_enabled=initiative_enabled,
         exploration_enabled=exploration_enabled,
         exploration_max_queue_items=exploration_queue,
         exploration_cooldown_seconds=exploration_cooldown,

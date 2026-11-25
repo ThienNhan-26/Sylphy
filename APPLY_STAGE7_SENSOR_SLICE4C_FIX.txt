@@ -1,0 +1,13 @@
+Sensor Slice 4C cleanup-race fix
+
+The first acceptance attempt found a lifecycle visibility race: adapter.running became False before SensorAdapterSession.stop() completed releasing the device lease.
+
+Back up the repository, extract this corrective patch at the repository root, then rerun:
+
+powershell -ExecutionPolicy Bypass -File .\tools\verify_entity_stage7_sensor_slice4c_windows.ps1
+
+Expected:
+38 passed
+PASS: Stage 7 Sensor Slice 4C Windows acceptance completed
+
+The patch updates microphone and camera cleanup ordering and the Slice 4C report. It does not alter the test to hide the resource leak.

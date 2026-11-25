@@ -1,7 +1,7 @@
 """Operational lifecycle, events, status, heartbeat, and inference-slot control."""
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
 import logging
@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Callable, Iterator
 from .core import ConversationCancelled, ConversationService, Turn
 from .cognition import CognitionTask
 from .exploration import ExplorationQuestion, ExplorationTask, ExplorationService
-from .investigation import Investigation, InvestigationBudget, InvestigationStatus
+from .investigation import Investigation, InvestigationBudget, InvestigationResult, InvestigationStatus
 from .investigation_execution import InvestigationExecutor, InvestigationPreempted
 from .presence import PresenceEvent, PresenceEventType, PresenceService
 from .avatar import AvatarController, PresentationState, normalize_presentation_state
@@ -19,6 +19,20 @@ from .interaction_policy import (
     InteractionAction, InteractionEvent, InteractionPolicy, PolicyConditions,
 )
 from .vision import MAX_QUESTION_CHARS
+from .companion_contract import Action, AutonomyDecision, CompanionContext, CompanionEvent, CompanionPolicy, InitiativeDecision, OutcomeStatus
+from .companion_slice import (
+    build_initiative_context,
+    build_presence_context,
+    initiative_trigger_event,
+    presence_notice_event,
+    propose_autonomy_decision,
+    propose_initiative_decision,
+    propose_presence_decision,
+    record_autonomy_execution,
+    record_completed_turn,
+    record_initiative,
+    record_presence_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -571,6 +585,9 @@ class Runtime:
         self.heartbeat = Heartbeat(heartbeat_interval_seconds, self.events, self.state) if heartbeat_enabled else None
         self.presence = PresenceService(presence_enabled, presence_queue_capacity)
         self.interaction_policy = InteractionPolicy()
+        self.companion_enabled = False
+        self.autonomy_enabled = False
+        self.initiative_enabled = False
         self.avatar: AvatarController | None = None
         self.voice_service: VoiceService | None = None
         self._lock = Lock()
@@ -639,6 +656,8 @@ class Runtime:
             return False
         if not self._owns_exploration_source(saved):
             return False
+        if self.companion_enabled:
+            return self._publish_exploration_question_with_companion(saved)
         try:
             event = PresenceEvent(
                 PresenceEventType.NOTICE,
@@ -680,6 +699,278 @@ class Runtime:
             return True
         self._exploration_store.release_exploration_notification(saved.id)
         return False
+
+    def _publish_exploration_question_with_companion(
+        self, saved: ExplorationQuestion
+    ) -> bool:
+        """Route one real presence event through the Companion Runtime pipeline.
+
+        The event is a saved Exploration question that already exists durably.
+        Policy decides whether it may be delivered; the delivery callback below
+        is the only place a Presence notice is queued or published. Any failure
+        is isolated: the persisted question and conversation remain untouched.
+        """
+        store = self._exploration_store
+        if store is None:
+            return False
+        try:
+            notice = PresenceEvent(
+                PresenceEventType.NOTICE,
+                "A question to explore",
+                saved.question,
+                event_id=saved.id,
+                created_at=saved.created_at,
+                source_id="exploration",
+                deduplication_key=saved.id,
+            )
+        except ValueError:
+            # Preserve the stored question unchanged; it may not satisfy Presence's display contract.
+            return False
+
+        now = datetime.now(timezone.utc)
+        status = saved.notification_status
+        queue_available = len(self.presence.pending()) < self.presence.capacity
+        conditions = PolicyConditions(
+            feature_enabled=self.presence.enabled,
+            dismissed=saved.status == "dismissed" or status == "dismissed",
+            duplicate=status in {"queued", "delivered"},
+            expired=status == "expired" or saved.expires_at <= now,
+            queue_available=queue_available,
+        )
+        try:
+            event = presence_notice_event(
+                notice_id=saved.id,
+                occurred_at=now,
+                source_session_id=saved.source_session_id,
+                expires_at=saved.expires_at,
+            )
+            context = build_presence_context(event, queue_available=queue_available)
+            decision = propose_presence_decision(event, context)
+        except Exception:
+            logger.exception(
+                "Companion presence event assembly failed; no notice was published"
+            )
+            return False
+
+        def execute() -> bool:
+            if not store.queue_exploration_notification(saved.id):
+                return False
+            delivered_event = PresenceEvent(
+                notice.event_type,
+                notice.title,
+                notice.content,
+                event_id=notice.event_id,
+                created_at=notice.created_at,
+                source_id=notice.source_id,
+                deduplication_key=notice.deduplication_key,
+            )
+            if self.presence.publish(delivered_event):
+                self.set_presentation_state(PresentationState.CURIOUS)
+                return True
+            store.release_exploration_notification(saved.id)
+            return False
+
+        try:
+            result = record_presence_event(
+                store,
+                event=event,
+                context=context,
+                decision=decision,
+                conditions=conditions,
+                occurred_at=now,
+                execute=execute,
+                pending_notice_count=lambda: len(self.presence.pending()),
+                evidence=saved.id,
+                companion_enabled=True,
+            )
+        except Exception:
+            logger.exception(
+                "Companion presence processing failed; no notice was published"
+            )
+            return False
+
+        if not result.published:
+            return False
+
+        self._maybe_autonomously_execute(event, context, conditions)
+        return True
+
+    def _maybe_autonomously_execute(
+        self,
+        event: CompanionEvent,
+        context: CompanionContext,
+        conditions: PolicyConditions,
+    ) -> bool:
+        """Propose and, when permitted, run one bounded autonomous action.
+
+        The trigger is a real delivered Presence event. The proposal is
+        deterministic; the existing InteractionPolicy decides; the permission gate
+        and bounded scope decide whether execution follows. Any failure is
+        isolated: the delivery already succeeded and nothing is executed blindly.
+        """
+        if not self.autonomy_enabled or not self.companion_enabled:
+            return False
+        if not self.investigation_execution_enabled:
+            return False
+        try:
+            autonomy_conditions = replace(conditions, feature_enabled=self.autonomy_enabled)
+            decision = propose_autonomy_decision(
+                event, context, conditions=autonomy_conditions, action_category="investigation"
+            )
+            if decision.proposed_action in (InteractionAction.SILENCE, InteractionAction.WAIT):
+                return False
+            autonomy_result = record_autonomy_execution(
+                self._exploration_store,
+                decision=decision,
+                context=context,
+                conditions=autonomy_conditions,
+                execute=lambda action: self._execute_autonomy_action(action, decision),
+                pending_notice_count=lambda: len(self.presence.pending()),
+                companion_enabled=self.companion_enabled,
+                policy=CompanionPolicy(self.interaction_policy),
+            )
+            if not autonomy_result.executed or autonomy_result.outcome.status is not OutcomeStatus.SUCCEEDED:
+                return False
+            action = autonomy_result.action
+            question_id = (
+                dict(action.parameters or {}) if action is not None else {}
+            ).get("question_id")
+            if not question_id:
+                return False
+            investigation = (
+                self._investigation_store.get_investigation_for_question(question_id)
+                if self._investigation_store is not None
+                else None
+            )
+            if investigation is None or investigation.status is not InvestigationStatus.COMPLETED:
+                return False
+            return self._maybe_initiate_investigation(investigation.id)
+        except Exception:
+            logger.exception(
+                "Autonomous action evaluation failed; no blind execution followed"
+            )
+            return False
+
+    def _execute_autonomy_action(self, action: Action, decision: AutonomyDecision) -> Investigation:
+        """Run the bounded autonomous action: one investigation pass on one question."""
+        parameters = dict(action.parameters or {})
+        question_id = parameters.get("question_id")
+        if not question_id:
+            raise RuntimeError("Autonomous action did not carry a bounded investigation target")
+        investigation = self._investigation_store.get_investigation_for_question(question_id)
+        if investigation is not None:
+            if investigation.status is not InvestigationStatus.QUEUED:
+                raise RuntimeError("Autonomous action requires a queued investigation")
+            scope = {str(key): str(value) for key, value in (decision.scope or {}).items()}
+            max_pages = int(scope.get("max_pages") or 0)
+            max_searches = int(scope.get("max_search_requests") or 0)
+            max_models = int(scope.get("max_model_calls") or 0)
+            max_sources = int(scope.get("max_source_bytes") or 0)
+            max_chars = int(scope.get("max_extracted_text_chars") or 0)
+            if (
+                (max_pages and investigation.pages_read >= max_pages)
+                or (max_searches and investigation.search_calls_used >= max_searches)
+                or (max_models and investigation.model_calls_used >= max_models)
+                or (max_sources and investigation.source_bytes_used >= max_sources)
+                or (max_chars and investigation.extracted_chars_used >= max_chars)
+            ):
+                raise RuntimeError("Autonomous action exceeds its bounded scope")
+        return self.start_investigation(question_id, allow_external_search=True)
+
+    def set_autonomy_enabled(self, enabled: bool) -> None:
+        """Enable or disable the bounded autonomous action layer."""
+        if not isinstance(enabled, bool):
+            raise ValueError("autonomy_enabled must be a boolean")
+        self.autonomy_enabled = enabled
+
+    @property
+    def autonomy_execution_enabled(self) -> bool:
+        return self.autonomy_enabled and self.investigation_execution_enabled
+
+    def set_initiative_enabled(self, enabled: bool) -> None:
+        """Enable or disable the bounded purposeful-initiative layer."""
+        if not isinstance(enabled, bool):
+            raise ValueError("initiative_enabled must be a boolean")
+        self.initiative_enabled = enabled
+
+    @property
+    def initiative_execution_enabled(self) -> bool:
+        return self.initiative_enabled and self.companion_enabled and self.presence.enabled
+
+    def _maybe_initiate_investigation(self, investigation_id: str) -> bool:
+        """Evaluate whether one completed bounded investigation warrants an initiative.
+
+        The trigger is a real, durably completed bounded investigation. The
+        proposal is deterministic; the existing InteractionPolicy decides whether
+        the resulting response may be delivered; permission and scope decide
+        whether delivery follows. Any failure is isolated: no blind delivery
+        happens and the conversation/investigation remain untouched.
+        """
+        if not self.initiative_enabled or not self.companion_enabled:
+            return False
+        if not self._investigation_store or not self.presence.enabled or not self.presence.started:
+            return False
+        investigation = self._investigation_store.get_investigation(investigation_id)
+        if investigation is None or investigation.status is not InvestigationStatus.COMPLETED:
+            return False
+        result = self._investigation_store.get_investigation_result(investigation_id)
+        now = datetime.now(timezone.utc)
+        event = initiative_trigger_event(investigation_id, occurred_at=now, expires_at=investigation.expires_at)
+        context = build_initiative_context(event, investigation_id=investigation_id, result=result)
+        conditions = PolicyConditions(
+            feature_enabled=self.initiative_enabled,
+            permission_granted=True,
+            permission_denied=False,
+            dismissed=False,
+            duplicate=False,
+            expired=event.expires_at is not None and event.expires_at <= now,
+            cooldown_active=False,
+            queue_available=len(self.presence.pending()) < self.presence.capacity,
+            resource_available=True,
+            grounded=bool(result is not None and result.evidence_sufficient),
+            relevant=bool(result is not None and result.evidence_sufficient),
+            needs_context=False,
+            request_permission=False,
+            can_wait=False,
+            requested_action=InteractionAction.SPEAK,
+            not_before=None,
+        )
+        try:
+            decision = propose_initiative_decision(event, context, conditions=conditions, result=result)
+            content = (decision.response or (result.summary.strip() if result is not None else None) or "").strip()
+            content = content[:1000] or None
+            if not content:
+                return False
+
+            def execute(action: Action) -> bool:
+                notice = PresenceEvent(
+                    PresenceEventType.NOTICE,
+                    "Research finding",
+                    content,
+                    event_id=investigation_id,
+                    created_at=now,
+                    source_id="initiative",
+                    deduplication_key=f"initiative-{investigation_id}",
+                )
+                return self.presence.publish(notice)
+
+            initiative_result = record_initiative(
+                self._exploration_store,
+                decision=decision,
+                context=context,
+                conditions=conditions,
+                execute=execute,
+                pending_notice_count=lambda: len(self.presence.pending()),
+                companion_enabled=self.companion_enabled,
+                policy=CompanionPolicy(self.interaction_policy),
+            )
+            return bool(initiative_result.delivered)
+        except Exception:
+            logger.exception(
+                "Bounded initiative evaluation failed; no blind delivery followed"
+            )
+            return False
+
 
     def _owns_exploration_source(self, question: ExplorationQuestion) -> bool:
         if self._exploration_store is None or len(question.source_message_ids) != 2:
@@ -992,6 +1283,30 @@ class Runtime:
                         self.exploration_worker.enqueue(result)
                     except Exception:
                         logger.exception("Could not enqueue Exploration after completed turn")
+                if self.companion_enabled and persistence is not None:
+                    # Companion bookkeeping is optional and must never fail the
+                    # conversation. The turn is already durably persisted here.
+                    try:
+                        record_completed_turn(
+                            persistence,
+                            session_id=session_id,
+                            turn=result,
+                            occurred_at=datetime.now(timezone.utc),
+                            pending_presence_notices=len(self.presence.pending()),
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Companion bookkeeping failed; conversation turn remains valid"
+                        )
+                elif not self.companion_enabled:
+                    logger.debug(
+                        "Companion feature disabled; no turn bookkeeping for session %s",
+                        session_id,
+                    )
+                elif persistence is None:
+                    logger.debug(
+                        "Companion bookkeeping skipped: no persistence store provided"
+                    )
                 return result
         except InterruptedError:
             if not operation_started:

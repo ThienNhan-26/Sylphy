@@ -69,7 +69,7 @@ def test_policy_rejects_unknown_sources_and_expired_events():
         InteractionEvent("e", "exploration", datetime.now(), "d", "none", "payload")
 
 
-def test_identity_prompt_is_loaded_from_configuration_and_separate_from_policy():
+def test_identity_prompt_is_loaded_and_merged_without_policy_decision_codes():
     identity = load_identity(Path("identity.toml"))
     prompt = identity.to_prompt()
     assert identity.version == "1.0"
@@ -77,6 +77,8 @@ def test_identity_prompt_is_loaded_from_configuration_and_separate_from_policy()
     assert "Respect privacy and explicit permissions" in prompt
     assert "SPEAK" not in prompt and "reason_code" not in prompt
     context = ContextBuilder("system baseline", prompt, 4000).build([], "hello")
-    assert context[0] == {"role": "system", "content": "system baseline"}
-    assert context[1] == {"role": "system", "content": prompt}
-    assert context[2] == {"role": "user", "content": "hello"}
+    assert context[0]["role"] == "system"
+    assert "system baseline" in context[0]["content"]
+    assert prompt in context[0]["content"]
+    assert sum(message["role"] == "system" for message in context) == 1
+    assert context[-1] == {"role": "user", "content": "hello"}

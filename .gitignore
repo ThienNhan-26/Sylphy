@@ -31,3 +31,9 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+# User memory and Entity runtime secrets/state (never package or commit)
+memory/
+control.token
+entity-daemon.lock
+entity_runtime.sqlite3*
+.andromity/

@@ -1,0 +1,1 @@
+"""Entity-owned persistence primitives."""

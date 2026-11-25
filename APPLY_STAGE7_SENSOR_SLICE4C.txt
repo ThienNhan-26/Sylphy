@@ -1,0 +1,13 @@
+Stage 7 Sensor Slice 4C — Microphone Adapter
+
+1. Back up the existing sylphy_work repository.
+2. Extract this patch at the repository root, preserving folder structure and allowing overwrite.
+3. Run:
+   py -3.13 -m pip install -e ".[dev,world,cognition]"
+   powershell -ExecutionPolicy Bypass -File .\tools\verify_entity_stage7_sensor_slice4c_windows.ps1
+
+The acceptance tests use a fake microphone backend and do not require physical microphone access.
+For optional physical sounddevice capture support, install:
+   py -3.13 -m pip install -e ".[voice]"
+
+No microphone opens until a MicrophoneAdapter is explicitly started with an active microphone consent grant.

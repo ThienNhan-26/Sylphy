@@ -1,0 +1,12 @@
+SYLPHY Stage 7 — Cognition Slice 4
+
+Apply this overlay at the repository root (sylphy_work), allowing files to be overwritten.
+
+This change switches the Ollama adapter from JSON-Schema format to JSON mode based on the user's successful direct Windows probe with lfm3-uncensored-32k:latest. Pydantic output validation and evidence provenance validation remain mandatory.
+
+After applying:
+  python -m pip install -e ".[cognition,dev]"
+  python -m pytest tests/entity_cognition -q
+  python -m pytest tests/entity_runtime tests/entity_world tests/entity_brain tests/entity_execution tests/entity_persistence tests/entity_cognition -m "not integration" -q
+
+Live acceptance still requires running the daemon against the installed Ollama model and inspecting /status for a completed result accepted by Brain.

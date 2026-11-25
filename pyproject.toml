@@ -7,26 +7,37 @@ name = "sylphy"
 version = "0.1.0"
 description = "Local-first AI companion foundation"
 requires-python = ">=3.10"
-dependencies = ["ollama>=0.6,<1", "Pillow>=10,<13", "tomli>=2; python_version < '3.11'"]
+dependencies = [
+    "fastapi>=0.115,<1",
+    "pydantic>=2.7,<3",
+    "uvicorn>=0.30,<1",
+    "psutil>=6,<8",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "numpy>=1.26,<3"]
-vision = ["opencv-python-headless>=4.9,<5"]
-voice = [
-    "faster-whisper>=1.2,<2",
-    "kokoro-onnx>=0.6,<1",
-    "sounddevice>=0.5,<1",
-    "webrtcvad-wheels>=2,<3",
-]
+# Dependencies belonging to the frozen pre-rework implementation.
+legacy = ["ollama>=0.6,<1", "Pillow>=10,<13", "tomli>=2; python_version < '3.11'"]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2", "httpx>=0.27,<1", "numpy>=1.26,<3"]
+world = ["watchdog>=4,<7"]
+cognition = ["httpx>=0.27,<1"]
+vision = ["opencv-python-headless>=4.9,<5", "Pillow>=10,<13"]
+# Voice Output only: local TTS synthesis and speaker playback. No microphone/STT.
+voice-output = ["kokoro-onnx>=0.6,<1", "sounddevice>=0.5,<1", "numpy>=1.26,<3"]
+# Frozen optional input stack; excluded from the Stage-7 Voice Output path.
+voice-input-legacy = ["faster-whisper>=1.2,<2", "webrtcvad-wheels>=2,<3"]
 
 [project.scripts]
 sylphy = "sylphy.app:main"
 sylphy-benchmark = "sylphy.benchmark:main"
+sylphy-entity = "sylphy_entity.daemon:main"
+sylphy-entityctl = "sylphy_entity.interface.cli:main"
+sylphy-avatar = "sylphy_entity.embodiment.avatar_service:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/entity_runtime", "tests/entity_world", "tests/entity_brain", "tests/entity_execution", "tests/entity_persistence", "tests/entity_cognition", "tests/entity_memory", "tests/entity_conversation", "tests/entity_sensors", "tests/entity_voice", "tests/entity_embodiment"]
 addopts = "-m 'not integration'"
+asyncio_default_fixture_loop_scope = "function"
 markers = ["integration: requires a running local Ollama server and installed model"]

@@ -1,0 +1,31 @@
+SYLPHY R7 — Automated verification record
+Date: 2026-11-25
+Source: supplied R7 completion candidate plus final integration patch.
+
+Collected test count: 319
+
+Command group 1:
+PYTHONPATH=src pytest -q tests/entity_runtime tests/entity_world tests/entity_brain tests/entity_execution
+Result: 160 passed, 2 upstream WebSockets/Uvicorn deprecation warnings.
+
+Command group 2:
+PYTHONPATH=src pytest -q tests/entity_persistence
+Result: 26 passed, 2 upstream WebSockets/Uvicorn deprecation warnings.
+
+Command group 3:
+PYTHONPATH=src pytest -q tests/entity_cognition tests/entity_memory tests/entity_conversation tests/entity_sensors tests/entity_voice tests/entity_embodiment
+Result: 133 passed, 2 upstream WebSockets/Uvicorn deprecation warnings.
+
+Total: 319 passed / 319 collected across grouped runs.
+
+Additional checks:
+- python -m compileall -q src/sylphy_entity tests/entity_runtime tests/entity_voice tests/entity_embodiment: PASS
+- node --check avatar/desktop/main.cjs: PASS
+- node --check avatar/desktop/preload.cjs: PASS
+- tsc -b: BLOCKED because npm packages were unavailable (missing three and @pixiv/three-vrm). The previously detected desktopBridge temporal-dead-zone error is no longer reported.
+- npm ci: timed out in this environment; partial node_modules was removed.
+- Vitest/Vite: not run because dependencies could not be installed.
+- Ruff: not run; Ruff is not installed.
+- Windows speaker and interactive Electron acceptance: pending on target Windows machine.
+
+Warnings are upstream deprecations and did not fail the Python tests. Do not interpret the pending OS/device checks as PASS.

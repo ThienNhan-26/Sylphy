@@ -1,0 +1,53 @@
+SYLPHY STAGE 7 — COGNITION SLICE 3
+
+Purpose:
+Improve Ollama structured-output compatibility and make live-model rejection diagnosable without exposing model output or user context in logs.
+
+Overlay patch: extract at the repository root and allow overwrite. Assumes Stage 7 Cognition Slice 1 and Slice 2 are already installed.
+
+Files:
+- src/sylphy_entity/cognition/ollama.py
+- src/sylphy_entity/runtime/supervisor.py
+- tests/entity_cognition/test_ollama_cognition.py
+- tests/entity_runtime/test_cognition_runtime.py
+- docs/entity_rework/STAGE_7_COGNITION_IMPLEMENTATION.md
+
+Changes:
+- Compact, flat JSON Schema sent via Ollama `format`.
+- No duplicated Pydantic JSON Schema in the prompt.
+- `think: false` for structured-output requests.
+- Strict Pydantic validation and provenance enforcement remain mandatory.
+- Accepts raw JSON or one complete fenced JSON block only.
+- Adds non-sensitive error categories for invalid model responses.
+- Exposes the last eight Brain Cognition review summaries under `/status` without exposing generated content or sandbox data.
+
+Apply from repository root:
+  Expand-Archive .\SYLPHY_STAGE7_COGNITION_SLICE3.zip -DestinationPath . -Force
+  python -m pip install -e ".[cognition,dev]"
+
+Run tests:
+  python -m pytest tests/entity_cognition -q
+  python -m pytest tests/entity_runtime tests/entity_world tests/entity_brain tests/entity_execution tests/entity_persistence tests/entity_cognition -m "not integration" -q
+
+Then restart the same live test with the exact model tag from `ollama list`:
+  python -m sylphy_entity.daemon --sandbox-root "D:\SYLPHY_SANDBOX" --autonomy --cognition-model "lfm3-uncensored-32k:latest"
+
+Expected diagnostic improvement:
+Instead of a generic "malformed cognition output", the log identifies one of:
+- invalid_response_envelope
+- missing_message_content
+- empty_model_content
+- non_json_model_content
+- cognition_schema_mismatch
+- unknown_evidence_reference
+
+These categories do not include raw model output or sandbox contents.
+
+The `/status` response now also includes `cognition.recent_reviews` (last eight Brain reviews), with:
+- `accepted_as_evidence`: true only when the provider completed, source observations are still KNOWN, and every cited reference belongs to the request.
+- `review_reason`: why Brain accepted or rejected the result.
+- `error_code`, `model`, and `elapsed_ms` for diagnostics.
+No generated text or sandbox contents are exposed in this status summary.
+
+Acceptance reminder:
+HTTP 200 from Ollama is not enough. Cognition is accepted only when the typed payload passes Pydantic validation, evidence references match the request, Runtime journals the result, and Brain reviews the result. Do not mark Stage 7 Cognition complete from the HTTP status alone.

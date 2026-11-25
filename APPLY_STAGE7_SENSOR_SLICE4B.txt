@@ -1,0 +1,13 @@
+Stage 7 Sensor Slice 4B — Camera Adapter
+
+1. Back up the existing sylphy_work repository.
+2. Extract this patch at the repository root, preserving folder structure and allowing overwrite.
+3. Run:
+   py -3.13 -m pip install -e ".[dev,world,cognition]"
+   powershell -ExecutionPolicy Bypass -File .\tools\verify_entity_stage7_sensor_slice4b_windows.ps1
+
+The acceptance tests use a fake camera backend and do not require physical camera access.
+For optional physical OpenCV capture support, install:
+   py -3.13 -m pip install -e ".[vision]"
+
+No camera opens until a CameraAdapter is explicitly started with an active camera consent grant.

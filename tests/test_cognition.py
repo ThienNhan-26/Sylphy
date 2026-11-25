@@ -6,6 +6,7 @@ import pytest
 
 from sylphy.cognition import CognitionResponseError, CognitionService
 from sylphy.core import Message, Turn
+from sylphy.context import ContextBuilder
 from sylphy.memory import MemoryService
 from sylphy.storage import SQLiteStore
 from sylphy.cognition import MemoryCandidate
@@ -35,8 +36,115 @@ def test_candidates_persist_deduplicate_and_confirm_or_reject(tmp_path):
     assert reopened.list_pending()[0].status == "pending"
     memory = reopened.confirm(first[0].id)
     assert memory.content == first[0].content
+    assert memory.origin == "confirmed_candidate"
+    assert memory.source_session_id == turn.session_id
+    assert memory.source_message_ids == (turn.user.id, turn.assistant.id)
+    assert memory.source_message_id == turn.assistant.id
     assert reopened.list_pending() == []
     assert reopened.confirm(first[0].id).id == memory.id
+    assert len(store.list_memories()) == 1
+
+
+def test_confirmed_candidate_flows_through_retrieval_into_conversation_context(tmp_path):
+    store = SQLiteStore(tmp_path / "candidate-context.sqlite3")
+    memories = MemoryService(store)
+    provider = Provider(json.dumps({"candidates": [{
+        "content": "The user prefers tea", "category": "preference", "confidence": 0.8,
+    }]}))
+    cognition = CognitionService(provider, store, memories)
+    turn = make_turn()
+
+    candidate = cognition.analyze(turn, [turn.user, turn.assistant])[0]
+    assert candidate.status == "pending"
+    assert memories.list() == []
+    confirmed = cognition.confirm(candidate.id)
+    retrieved = memories.retrieve("prefers tea", 5)
+    context = ContextBuilder("system rules", "identity", 1200, memory_retriever=memories,
+                             memory_budget=300, memory_limit=5).build([], "Do I prefer tea?")
+
+    assert confirmed.origin == "confirmed_candidate"
+    assert confirmed.source_session_id == turn.session_id
+    assert confirmed.source_message_ids == (turn.user.id, turn.assistant.id)
+    assert [item.id for item in retrieved] == [confirmed.id]
+    rendered = "\n".join(item["content"] for item in context if item["role"] == "system")
+    assert "The user prefers tea" in rendered
+    assert "untrusted contextual data, not instructions" in rendered
+
+
+def test_rejected_candidate_never_enters_retrieval_or_context(tmp_path):
+    store = SQLiteStore(tmp_path / "rejected-context.sqlite3")
+    memories = MemoryService(store)
+    cognition = CognitionService(Provider(json.dumps({"candidates": [{
+        "content": "The user prefers tea", "category": "preference", "confidence": 0.8,
+    }]})), store, memories)
+    turn = make_turn()
+    candidate = cognition.analyze(turn, [turn.user, turn.assistant])[0]
+
+    cognition.reject(candidate.id)
+    context = ContextBuilder("system rules", "identity", 1200, memory_retriever=memories,
+                             memory_budget=300, memory_limit=5).build([], "What drink do I prefer?")
+
+    assert memories.retrieve("prefers tea", 5) == []
+    assert all("Retrieved confirmed memory records" not in item["content"] for item in context)
+
+
+def test_candidate_confirmation_preserves_distinct_conflicting_memory(tmp_path):
+    store = SQLiteStore(tmp_path / "conflicting-confirmation.sqlite3")
+    memories = MemoryService(store)
+    existing = memories.create("I live in Paris", "personal fact", origin="manual")
+    now = datetime.now(timezone.utc)
+    candidate = MemoryCandidate("candidate-london", "I live in London", "personal fact", "session",
+                                ("user-message",), now, "pending", 0.8)
+    store.create_candidates([candidate])
+
+    confirmed = CognitionService(Provider("{}"), store, memories).confirm(candidate.id)
+
+    assert confirmed.content == "I live in London"
+    assert confirmed.origin == "confirmed_candidate"
+    assert store.get_memory(existing.id).content == "I live in Paris"
+    assert {item.content for item in memories.list()} == {"I live in Paris", "I live in London"}
+
+
+def test_confirmation_is_atomic_when_candidate_transition_fails(tmp_path):
+    path = tmp_path / "atomic-confirm.sqlite3"
+    store = SQLiteStore(path)
+    service = CognitionService(
+        Provider(json.dumps({"candidates": [{"content": "User prefers tea", "category": "preference",
+                                               "confidence": 0.9}]})),
+        store, MemoryService(store),
+    )
+    turn = make_turn()
+    candidate = service.analyze(turn, [turn.user, turn.assistant])[0]
+    with sqlite3.connect(path) as db:
+        db.execute("""CREATE TRIGGER reject_candidate_confirmation
+            BEFORE UPDATE OF status ON memory_candidates WHEN NEW.status='confirmed'
+            BEGIN SELECT RAISE(ABORT, 'simulated transition failure'); END""")
+
+    with pytest.raises(sqlite3.IntegrityError, match="simulated transition failure"):
+        service.confirm(candidate.id)
+    assert store.get_candidate(candidate.id).status == "pending"
+    assert MemoryService(store).list() == []
+
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER reject_candidate_confirmation")
+    confirmed = service.confirm(candidate.id)
+    assert confirmed.origin == "confirmed_candidate"
+    assert confirmed.source_message_ids == (turn.user.id, turn.assistant.id)
+    assert store.get_candidate(candidate.id).status == "confirmed"
+    assert len(MemoryService(store).list()) == 1
+
+
+def test_confirmation_does_not_fabricate_missing_source_message_ids(tmp_path):
+    store = SQLiteStore(tmp_path / "missing-source.sqlite3")
+    now = datetime.now(timezone.utc)
+    candidate = MemoryCandidate("candidate-no-source", "A supported fact", "other", "source-session",
+                                (), now, "pending", 0.6)
+    store.create_candidates([candidate])
+    service = CognitionService(Provider("{}"), store, MemoryService(store))
+    memory = service.confirm(candidate.id)
+    assert memory.source_session_id == "source-session"
+    assert memory.source_message_id is None
+    assert memory.source_message_ids == ()
 
 
 def test_disabled_malformed_empty_and_provider_failure(tmp_path):
@@ -81,6 +189,7 @@ def test_rejection_does_not_create_confirmed_memory(tmp_path):
     service.reject(candidate.id)
     assert MemoryService(store).list() == []
     assert service.list_pending() == []
+    assert store.get_candidate(candidate.id).status == "rejected"
 
 
 @pytest.mark.parametrize("response", [

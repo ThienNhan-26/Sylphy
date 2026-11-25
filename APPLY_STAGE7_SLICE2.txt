@@ -1,0 +1,26 @@
+SYLPHY STAGE 7 — COGNITION SLICE 2
+
+Overlay patch: extract at the repository root and allow overwrite. Assumes Cognition Slice 1 is installed.
+
+Implements:
+- Brain emits deterministic, bounded CognitionRequestProposal records for new, known sandbox file metadata.
+- Runtime constructs requests from current World facts using an explicit metadata allowlist. File contents are not sent to the model.
+- Runtime journals requests/results; provider work is asynchronous and uses an exclusive per-model resource lease.
+- Brain independently checks source freshness and provenance before retaining cognition output. Model proposals remain non-executable context.
+- Public event ingress cannot forge cognition.* events.
+- Optional CLI flags enable local Ollama cognition and require --autonomy plus an explicit --sandbox-root.
+- Pending request/result events are reconciled from the durable journal after restart.
+
+Install (repository root):
+  python -m pip install -e ".[cognition,dev]"
+
+Focused tests:
+  python -m pytest tests/entity_cognition tests/entity_brain/test_cognition_routing.py tests/entity_runtime/test_cognition_runtime.py tests/entity_persistence/test_state_repository.py -q
+
+Full Entity regression:
+  python -m pytest tests/entity_runtime tests/entity_world tests/entity_brain tests/entity_execution tests/entity_persistence tests/entity_cognition -m "not integration" -q
+
+Start (replace MODEL_TAG with the exact tag from `ollama list`; directory must exist):
+  python -m sylphy_entity.daemon --sandbox-root "D:\SYLPHY_SANDBOX" --autonomy --cognition-model "MODEL_TAG"
+
+Inspect the `cognition` section of /status. A real Ollama model has not been run in the build environment; Windows live acceptance remains pending.

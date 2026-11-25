@@ -1,0 +1,16 @@
+SYLPHY — Stage 7 Memory Slice 2B patch
+
+1. Back up your current sylphy_work folder.
+2. Extract this ZIP into the repository root (the folder containing pyproject.toml).
+3. Allow overwriting the listed source/test/docs files.
+4. Run in PowerShell from the repository root:
+
+   py -3.13 -m pip install -e ".[dev,world,cognition]"
+   powershell -ExecutionPolicy Bypass -File .\tools\verify_entity_stage7_memory_slice2b_windows.ps1
+
+Expected final line:
+PASS: Stage 7 Memory Slice 2B Windows acceptance completed
+
+This patch adds SQLite schema v4. Migration from schema v3 is additive and does not delete existing Entity tables or memory records. Still, keep the backup until Windows acceptance completes.
+
+No daemon/Brain/Runtime wiring, automatic cognition promotion, semantic retrieval, legacy memory import, or Conversation integration is enabled in this slice.

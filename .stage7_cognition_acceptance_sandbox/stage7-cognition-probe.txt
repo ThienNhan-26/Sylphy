@@ -1,0 +1,1 @@
+﻿This content must not be sent to the cognition model.

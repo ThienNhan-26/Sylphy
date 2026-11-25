@@ -6,15 +6,19 @@ from pathlib import Path
 from uuid import uuid4
 import re
 import hashlib
+import json
 
 from .core import Message, Session
-from .memory import Memory
+from .memory import MEMORY_ORIGINS, Memory, MemoryRevision
 from .cognition import CognitionTask, MemoryCandidate
 from .exploration import ExplorationQuestion, ExplorationTask
 from .investigation import (
     Investigation, InvestigationBudget, InvestigationBudgetError, InvestigationEvidence,
     InvestigationFinding, InvestigationResult, InvestigationStatus,
 )
+
+
+_COMPANION_STATE_ID = 1
 
 
 class SQLiteStore:
@@ -32,16 +36,12 @@ class SQLiteStore:
                 content TEXT NOT NULL, created_at TEXT NOT NULL, completed INTEGER NOT NULL
             )""")
             db.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)")
-            db.execute("""CREATE TABLE IF NOT EXISTS memories (
-                id TEXT PRIMARY KEY, content TEXT NOT NULL, category TEXT NOT NULL,
-                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                source_session_id TEXT, source_message_id TEXT,
-                confidence REAL CHECK(confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
-                status TEXT NOT NULL DEFAULT 'confirmed'
-            )""")
+            self._ensure_memory_schema(db)
             db.execute("CREATE INDEX IF NOT EXISTS idx_memories_status_updated ON memories(status, updated_at DESC)")
             db.execute("CREATE INDEX IF NOT EXISTS idx_memories_source_session ON memories(source_session_id)")
+            self._ensure_memory_revision_schema(db)
             self._ensure_candidate_schema(db)
+            self._ensure_companion_schema(db)
             db.execute("""CREATE TABLE IF NOT EXISTS cognition_tasks (
                 id TEXT PRIMARY KEY, source_session_id TEXT NOT NULL, source_message_ids TEXT NOT NULL,
                 created_at TEXT NOT NULL, status TEXT NOT NULL, attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -159,6 +159,84 @@ class SQLiteStore:
         return db
 
     @staticmethod
+    def _ensure_memory_schema(db: sqlite3.Connection) -> None:
+        """Add explicit provenance while preserving legacy records in place."""
+        db.execute("SAVEPOINT memory_provenance_schema")
+        try:
+            exists = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memories'"
+            ).fetchone()
+            if not exists:
+                db.execute("""CREATE TABLE memories (
+                    id TEXT PRIMARY KEY, content TEXT NOT NULL, category TEXT NOT NULL,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                    source_session_id TEXT, source_message_id TEXT,
+                    confidence REAL CHECK(confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+                    status TEXT NOT NULL DEFAULT 'confirmed',
+                    origin TEXT NOT NULL DEFAULT 'unknown'
+                        CHECK(origin IN ('unknown','legacy_unknown','user_provided','manual','confirmed_candidate')),
+                    source_message_ids TEXT NOT NULL DEFAULT '[]'
+                )""")
+            else:
+                columns = {row[1] for row in db.execute("PRAGMA table_info(memories)")}
+                if "origin" not in columns:
+                    db.execute("""ALTER TABLE memories ADD COLUMN origin TEXT NOT NULL DEFAULT 'legacy_unknown'
+                        CHECK(origin IN ('unknown','legacy_unknown','user_provided','manual','confirmed_candidate'))""")
+                    columns.add("origin")
+                if "source_message_ids" not in columns:
+                    db.execute("ALTER TABLE memories ADD COLUMN source_message_ids TEXT NOT NULL DEFAULT '[]'")
+                    columns.add("source_message_ids")
+                if "source_message_id" in columns:
+                    legacy_sources = db.execute(
+                        "SELECT id, source_message_id FROM memories "
+                        "WHERE source_message_id IS NOT NULL AND source_message_ids='[]'"
+                    ).fetchall()
+                    db.executemany(
+                        "UPDATE memories SET source_message_ids=? WHERE id=?",
+                        [(json.dumps([message_id]), memory_id)
+                         for memory_id, message_id in legacy_sources],
+                    )
+                if "origin" in columns:
+                    allowed = tuple(sorted(MEMORY_ORIGINS))
+                    placeholders = ",".join("?" for _ in allowed)
+                    invalid = db.execute(
+                        f"SELECT id FROM memories WHERE origin NOT IN ({placeholders}) OR origin IS NULL LIMIT 1",
+                        allowed,
+                    ).fetchone()
+                    if invalid:
+                        raise ValueError(f"Memory {invalid[0]} has an unsupported origin")
+            db.execute("RELEASE memory_provenance_schema")
+        except Exception:
+            db.execute("ROLLBACK TO memory_provenance_schema")
+            db.execute("RELEASE memory_provenance_schema")
+            raise
+
+    @staticmethod
+    def _ensure_memory_revision_schema(db: sqlite3.Connection) -> None:
+        """Add correction history without rewriting existing memory rows."""
+        db.execute("SAVEPOINT memory_revision_schema")
+        try:
+            db.execute("""CREATE TABLE IF NOT EXISTS memory_revisions (
+                id TEXT PRIMARY KEY,
+                memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+                content TEXT NOT NULL, category TEXT NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                source_session_id TEXT, source_message_id TEXT, confidence REAL,
+                status TEXT NOT NULL, origin TEXT NOT NULL, source_message_ids TEXT NOT NULL,
+                revision_at TEXT NOT NULL,
+                correction_origin TEXT NOT NULL CHECK(correction_origin IN
+                    ('unknown','legacy_unknown','user_provided','manual','confirmed_candidate')),
+                correction_source_session_id TEXT, correction_source_message_ids TEXT NOT NULL
+            )""")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_memory_revisions_parent_time "
+                       "ON memory_revisions(memory_id, revision_at, id)")
+            db.execute("RELEASE memory_revision_schema")
+        except Exception:
+            db.execute("ROLLBACK TO memory_revision_schema")
+            db.execute("RELEASE memory_revision_schema")
+            raise
+
+    @staticmethod
     def _ensure_exploration_notification_schema(db: sqlite3.Connection) -> None:
         columns = {row[1] for row in db.execute("PRAGMA table_info(exploration_questions)")}
         if "notification_status" not in columns:
@@ -226,6 +304,37 @@ class SQLiteStore:
             raise
 
     @staticmethod
+    def _ensure_companion_schema(db: sqlite3.Connection) -> None:
+        """Add the Companion Runtime Initiative (CRI) outcome and state tables.
+
+        companion_outcomes stores one truthful bookkeeping record per completed
+        turn, keyed by a unique event_id so the database enforces idempotency.
+        companion_state is a singleton row holding only bounded, evidence-based
+        companion state.
+        """
+        db.execute("""CREATE TABLE IF NOT EXISTS companion_outcomes (
+            outcome_id TEXT PRIMARY KEY,
+            event_id TEXT NOT NULL UNIQUE,
+            decision_id TEXT NOT NULL,
+            action_id TEXT,
+            status TEXT NOT NULL,
+            detail TEXT NOT NULL,
+            evidence TEXT,
+            created_at TEXT NOT NULL
+        )""")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_companion_outcomes_event ON companion_outcomes(event_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_companion_outcomes_created ON companion_outcomes(created_at DESC, outcome_id)")
+        db.execute("""CREATE TABLE IF NOT EXISTS companion_state (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            revision INTEGER NOT NULL DEFAULT 0,
+            last_event_id TEXT,
+            last_outcome_id TEXT,
+            last_observed_at TEXT,
+            conversation_active INTEGER NOT NULL DEFAULT 0,
+            pending_presence_notices INTEGER NOT NULL DEFAULT 0
+        )""")
+
+    @staticmethod
     def _session(row) -> Session:
         return Session(row[0], datetime.fromisoformat(row[1]), datetime.fromisoformat(row[2]), row[3])
 
@@ -277,21 +386,210 @@ class SQLiteStore:
             ])
             db.execute("UPDATE sessions SET updated_at=MAX(updated_at, ?) WHERE id=?", (assistant.created_at.isoformat(), user.session_id))
 
+    def record_companion_outcome(
+        self,
+        outcome_id: str,
+        event_id: str,
+        decision_id: str,
+        action_id: str | None,
+        status: str,
+        detail: str,
+        evidence: str | None,
+        created_at: datetime,
+        revision: int,
+        last_event_id: str | None,
+        last_outcome_id: str | None,
+        last_observed_at: datetime | None,
+        conversation_active: bool,
+        pending_presence_notices: int,
+    ) -> tuple[bool, tuple | None]:
+        """Atomically record a companion outcome and update bounded state.
+
+        The outcome insert and state update run in one BEGIN IMMEDIATE
+        transaction. The UNIQUE constraint on companion_outcomes.event_id is the
+        database-enforced idempotency guard: re-processing the same event_id
+        inserts nothing and applies no further state revision.
+
+        Returns (inserted, state_row). inserted is False when the event_id was
+        already recorded; in that case no state change is applied and state_row
+        reflects the current stored state.
+        """
+        created_iso = created_at.isoformat()
+        observed_iso = last_observed_at.isoformat() if last_observed_at is not None else None
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute("SELECT 1 FROM companion_outcomes WHERE event_id=?", (event_id,)).fetchone()
+            if existing is not None:
+                state_row = db.execute(
+                    "SELECT revision, last_event_id, last_outcome_id, last_observed_at, "
+                    "conversation_active, pending_presence_notices "
+                    "FROM companion_state WHERE id=?",
+                    (_COMPANION_STATE_ID,),
+                ).fetchone()
+                return False, state_row
+            db.execute(
+                """INSERT INTO companion_outcomes
+                   (outcome_id, event_id, decision_id, action_id, status, detail, evidence, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    outcome_id, event_id, decision_id, action_id, status,
+                    detail, evidence, created_iso,
+                ),
+            )
+            db.execute(
+                """INSERT INTO companion_state
+                   (id, revision, last_event_id, last_outcome_id, last_observed_at,
+                    conversation_active, pending_presence_notices)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                       revision = revision + 1,
+                       last_event_id = excluded.last_event_id,
+                       last_outcome_id = excluded.last_outcome_id,
+                       last_observed_at = excluded.last_observed_at,
+                       conversation_active = excluded.conversation_active,
+                       pending_presence_notices = excluded.pending_presence_notices""",
+                (
+                    _COMPANION_STATE_ID, revision, last_event_id, last_outcome_id,
+                    observed_iso, int(conversation_active), pending_presence_notices,
+                ),
+            )
+            state_row = db.execute(
+                "SELECT revision, last_event_id, last_outcome_id, last_observed_at, "
+                "conversation_active, pending_presence_notices "
+                "FROM companion_state WHERE id=?",
+                (_COMPANION_STATE_ID,),
+            ).fetchone()
+            return True, state_row
+
+    def get_companion_outcome(self, event_id: str):
+        """Return the stored companion outcome row for an event, or None."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT outcome_id, event_id, decision_id, action_id, status, detail, evidence, created_at "
+                "FROM companion_outcomes WHERE event_id=?",
+                (event_id,),
+            ).fetchone()
+        return row
+
+    def get_companion_state(self):
+        """Return the stored companion state row, or None when not yet initialized."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT revision, last_event_id, last_outcome_id, last_observed_at, "
+                "conversation_active, pending_presence_notices "
+                "FROM companion_state WHERE id=?",
+                (_COMPANION_STATE_ID,),
+            ).fetchone()
+        return row
+
+    def list_companion_outcomes(self, limit: int = 20):
+        """Return companion outcome rows, newest first, for diagnostics."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError("limit must be a positive integer")
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT outcome_id, event_id, decision_id, action_id, status, detail, evidence, created_at "
+                "FROM companion_outcomes ORDER BY created_at DESC, outcome_id LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return rows
+
     @staticmethod
     def _memory(row) -> Memory:
         return Memory(row[0], row[1], row[2], datetime.fromisoformat(row[3]), datetime.fromisoformat(row[4]),
-                      row[5], row[6], row[7], row[8])
+                      row[5], row[6], row[7], row[8], row[9], tuple(json.loads(row[10])))
+
+    @staticmethod
+    def _memory_revision(row) -> MemoryRevision:
+        return MemoryRevision(
+            row[0], row[1], row[2], row[3], datetime.fromisoformat(row[4]),
+            datetime.fromisoformat(row[5]), row[6], row[7], row[8], row[9], row[10],
+            tuple(json.loads(row[11])), datetime.fromisoformat(row[12]), row[13], row[14],
+            tuple(json.loads(row[15])),
+        )
 
     def create_memory(self, content: str, category: str, source_session_id: str | None = None,
-                      source_message_id: str | None = None, confidence: float | None = None) -> Memory:
+                      source_message_id: str | None = None, confidence: float | None = None,
+                      origin: str = "unknown", source_message_ids: tuple[str, ...] | None = None) -> Memory:
+        if origin not in MEMORY_ORIGINS:
+            raise ValueError(f"Unsupported memory origin: {origin}")
+        if not content.strip():
+            raise ValueError("Memory content cannot be empty")
+        if source_message_ids is None:
+            source_ids = (source_message_id,) if source_message_id else ()
+        else:
+            if any(not isinstance(item, str) or not item.strip() for item in source_message_ids):
+                raise ValueError("source_message_ids must contain non-empty strings")
+            source_ids = tuple(source_message_ids)
+            if source_message_id is None and source_ids:
+                source_message_id = source_ids[-1]
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            return self._create_memory_in_transaction(
+                db, content, category, source_session_id, source_message_id,
+                confidence, origin, source_ids)
+
+    @staticmethod
+    def _find_exact_confirmed_memory(db: sqlite3.Connection, content: str, category: str):
+        rows = db.execute(
+            "SELECT * FROM memories WHERE status='confirmed' ORDER BY updated_at DESC, id"
+        ).fetchall()
+        normalized = " ".join(content.casefold().split())
+        normalized_category = category.strip().casefold()
+        return next((row for row in rows
+                     if row[2].strip().casefold() == normalized_category
+                     and " ".join(row[1].casefold().split()) == normalized), None)
+
+    @classmethod
+    def _create_memory_in_transaction(cls, db: sqlite3.Connection, content: str, category: str,
+                                      source_session_id: str | None, source_message_id: str | None,
+                                      confidence: float | None, origin: str,
+                                      source_message_ids: tuple[str, ...]) -> Memory:
+        existing = cls._find_exact_confirmed_memory(db, content, category)
+        if existing is not None:
+            return cls._memory(existing)
+        if not content.strip():
+            raise ValueError("Memory content cannot be empty")
         now = datetime.now(timezone.utc)
         memory = Memory(str(uuid4()), content, category, now, now, source_session_id, source_message_id,
-                        confidence, "confirmed")
-        with self._connect() as db:
-            db.execute("INSERT INTO memories VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                       (memory.id, memory.content, memory.category, now.isoformat(), now.isoformat(),
-                        source_session_id, source_message_id, confidence, memory.status))
+                        confidence, "confirmed", origin, source_message_ids)
+        db.execute("""INSERT INTO memories
+            (id, content, category, created_at, updated_at, source_session_id, source_message_id,
+             confidence, status, origin, source_message_ids)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (memory.id, memory.content, memory.category, now.isoformat(), now.isoformat(),
+             source_session_id, source_message_id, confidence, memory.status, origin,
+             json.dumps(source_message_ids, ensure_ascii=False)))
         return memory
+
+    def confirm_candidate_memory(self, candidate_id: str) -> Memory:
+        """Atomically persist a candidate as a memory and mark it confirmed."""
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM memory_candidates WHERE id=?", (candidate_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"Candidate not found: {candidate_id}")
+            candidate = self._candidate(row)
+            if candidate.status == "confirmed":
+                memory = self._find_exact_confirmed_memory(db, candidate.content, candidate.category)
+                if memory is None:
+                    raise RuntimeError("Confirmed candidate has no matching confirmed memory")
+                return self._memory(memory)
+            if candidate.status != "pending":
+                raise ValueError(f"Candidate is {candidate.status}")
+            source_message_id = candidate.source_message_ids[-1] if candidate.source_message_ids else None
+            memory = self._create_memory_in_transaction(
+                db, candidate.content, candidate.category, candidate.source_session_id,
+                source_message_id, candidate.confidence, "confirmed_candidate",
+                candidate.source_message_ids,
+            )
+            updated = db.execute(
+                "UPDATE memory_candidates SET status='confirmed' WHERE id=? AND status='pending'",
+                (candidate_id,),
+            )
+            if updated.rowcount != 1:
+                raise RuntimeError("Candidate confirmation state changed during confirmation")
+            return memory
 
     def list_memories(self, status: str | None = "confirmed") -> list[Memory]:
         with self._connect() as db:
@@ -307,16 +605,63 @@ class SQLiteStore:
         return self._memory(row) if row else None
 
     def update_memory(self, memory_id: str, content: str, category: str | None = None,
-                      confidence: float | None = None) -> Memory:
+                      confidence: float | None = None, correction_origin: str = "unknown",
+                      correction_source_session_id: str | None = None,
+                      correction_source_message_ids: tuple[str, ...] = ()) -> Memory:
+        if correction_origin not in MEMORY_ORIGINS:
+            raise ValueError(f"Unsupported memory origin: {correction_origin}")
+        if any(not isinstance(item, str) or not item.strip() for item in correction_source_message_ids):
+            raise ValueError("correction_source_message_ids must contain non-empty strings")
         with self._connect() as db:
-            existing = db.execute("SELECT category, confidence FROM memories WHERE id=?", (memory_id,)).fetchone()
-            if existing is None:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone()
+            if row is None:
                 raise KeyError(f"Memory not found: {memory_id}")
-            db.execute("UPDATE memories SET content=?, category=?, confidence=?, updated_at=? WHERE id=?",
-                       (content, category if category is not None else existing[0],
-                        confidence if confidence is not None else existing[1],
-                        datetime.now(timezone.utc).isoformat(), memory_id))
+            existing = self._memory(row)
+            target_category = category if category is not None else existing.category
+            target_confidence = confidence if confidence is not None else existing.confidence
+            target_normalized = " ".join(content.casefold().split())
+            duplicates = db.execute(
+                "SELECT id, category, content FROM memories WHERE status='confirmed' AND id<>?",
+                (memory_id,),
+            ).fetchall()
+            normalized_category = target_category.strip().casefold()
+            if any(row[1].strip().casefold() == normalized_category
+                   and " ".join(row[2].casefold().split()) == target_normalized for row in duplicates):
+                raise ValueError("An exact confirmed memory with this category already exists")
+            if (content, target_category, target_confidence) != (
+                    existing.content, existing.category, existing.confidence):
+                previous_time = existing.updated_at
+                if previous_time.tzinfo is None:
+                    previous_time = previous_time.replace(tzinfo=timezone.utc)
+                revised_time = max(datetime.now(timezone.utc), previous_time + timedelta(microseconds=1))
+                revised_at = revised_time.isoformat()
+                db.execute("""INSERT INTO memory_revisions (
+                    id, memory_id, content, category, created_at, updated_at,
+                    source_session_id, source_message_id, confidence, status, origin,
+                    source_message_ids, revision_at, correction_origin,
+                    correction_source_session_id, correction_source_message_ids
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (str(uuid4()), existing.id, existing.content, existing.category,
+                     existing.created_at.isoformat(), existing.updated_at.isoformat(),
+                     existing.source_session_id, existing.source_message_id, existing.confidence,
+                     existing.status, existing.origin,
+                     json.dumps(existing.source_message_ids, ensure_ascii=False), revised_at,
+                     correction_origin, correction_source_session_id,
+                     json.dumps(tuple(correction_source_message_ids), ensure_ascii=False)))
+                db.execute("UPDATE memories SET content=?, category=?, confidence=?, updated_at=? WHERE id=?",
+                           (content, target_category, target_confidence, revised_at, memory_id))
         return self.get_memory(memory_id)  # type: ignore[return-value]
+
+    def list_memory_revisions(self, memory_id: str) -> list[MemoryRevision]:
+        with self._connect() as db:
+            rows = db.execute("""SELECT id, memory_id, content, category, created_at, updated_at,
+                source_session_id, source_message_id, confidence, status, origin, source_message_ids,
+                revision_at, correction_origin, correction_source_session_id,
+                correction_source_message_ids
+                FROM memory_revisions WHERE memory_id=? ORDER BY revision_at, id""",
+                (memory_id,)).fetchall()
+        return [self._memory_revision(row) for row in rows]
 
     def delete_memory(self, memory_id: str) -> None:
         with self._connect() as db:
@@ -337,7 +682,6 @@ class SQLiteStore:
             return []
         memories = self.list_memories("confirmed")
         ranked: list[tuple[int, Memory]] = []
-        query_phrase = " ".join(terms)
         for memory in memories:
             content_tokens = self._search_tokens(memory.content)
             category_tokens = self._search_tokens(memory.category)
@@ -349,13 +693,26 @@ class SQLiteStore:
             matched = sum(1 for term, count in content_counts.items() if count > 0)
             if matched == len(terms) and terms:
                 score += 2  # Reward memories covering all query terms.
-            normalized_content = " ".join(content_tokens)
-            if len(terms) > 1 and query_phrase in normalized_content:
+            phrase_match = any(
+                content_tokens[index:index + len(terms)] == terms
+                for index in range(max(0, len(content_tokens) - len(terms) + 1))
+            ) if len(terms) > 1 else False
+            if phrase_match:
                 score += 3  # Phrase-level relevance, without substring token matching.
             if score:
                 ranked.append((score, memory))
         ranked.sort(key=lambda item: (-item[0], -item[1].updated_at.timestamp(), item[1].id))
-        return [memory for _, memory in ranked[:limit]]
+        selected: list[Memory] = []
+        seen: set[tuple[str, str]] = set()
+        for _, memory in ranked:
+            identity = (" ".join(memory.content.casefold().split()), memory.category.strip().casefold())
+            if identity in seen:
+                continue
+            seen.add(identity)
+            selected.append(memory)
+            if len(selected) >= limit:
+                break
+        return selected
 
     @staticmethod
     def _candidate(row) -> MemoryCandidate:

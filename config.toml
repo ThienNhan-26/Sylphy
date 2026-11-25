@@ -5,7 +5,7 @@ database_name = "sylphy.sqlite3"
 
 [ollama]
 host = "http://127.0.0.1:11434"
-model = "jarvis-uncen:latest"
+model = "lfm3-uncensored-32k:latest"
 timeout_seconds = 120
 context_budget = 8192
 system_instructions = "Follow the configured SYLPHY identity while grounding statements in available context. Be honest about uncertainty, memory, and capabilities. Application-enforced privacy, permission, and delivery boundaries take precedence over conversational style."
@@ -34,17 +34,12 @@ shutdown_grace_seconds = 5
 enabled = true
 queue_capacity = 20
 
-[avatar]
+[companion]
 enabled = true
-asset_path = "assets/avatar/sylphy.png"
-allow_external_asset = false
-width = 240
-height = 320
-always_on_top = true
-start_visible = false
+
 
 [exploration]
-enabled = false
+enabled = true
 max_queue_items = 20
 cooldown_seconds = 3600
 max_attempts_per_period = 3
@@ -53,16 +48,6 @@ question_max_length = 400
 context_max_chars = 8000
 question_expiry_days = 30
 
-[vision]
-enabled = true
-model = "lfm3-vl:2b-q8_0"
-camera_index = 0
-capture_timeout_seconds = 5
-max_width = 1280
-max_height = 1280
-jpeg_quality = 85
-max_image_bytes = 1500000
-inference_timeout_seconds = 90
 
 [voice]
-enabled = true
+enabled = false
