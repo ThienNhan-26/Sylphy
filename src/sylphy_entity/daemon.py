@@ -8,15 +8,23 @@ import logging
 import sys
 from pathlib import Path
 
+from sylphy_entity.config import load_entity_config
 from sylphy_entity.runtime.instance_lock import InstanceAlreadyRunning
 from sylphy_entity.runtime.paths import default_runtime_dir
 from sylphy_entity.runtime.supervisor import EntitySupervisor
+from sylphy_entity.interaction.generator import (
+    ConversationGenerator,
+    OllamaConversationGenerator,
+    LlamaCppConversationGenerator,
+)
 
 
 async def _run(
     port: int, sandbox_root: str | None, reconcile_interval: float, autonomy: bool,
     cognition_model: str | None, cognition_base_url: str,
     voice_model: str | None, voice_voices: str | None, conversation_model: str | None,
+    conversation_provider: str = "ollama", conversation_base_url: str | None = None,
+    conversation_thinking: bool = True,
 ) -> None:
     runtime_dir = default_runtime_dir()
     cognition_provider = None
@@ -25,8 +33,18 @@ async def _run(
         cognition_provider = OllamaCognition(model=cognition_model, base_url=cognition_base_url)
     conversation_generator = None
     if conversation_model:
-        from sylphy_entity.interaction.generator import OllamaConversationGenerator
-        conversation_generator = OllamaConversationGenerator(model=conversation_model, base_url=cognition_base_url)
+        if conversation_provider == "llama.cpp":
+            conversation_generator = LlamaCppConversationGenerator(
+                model=conversation_model,
+                base_url=conversation_base_url or "http://127.0.0.1:9931",
+                thinking_enabled=conversation_thinking,
+            )
+        else:
+            conversation_generator = OllamaConversationGenerator(
+                model=conversation_model,
+                base_url=conversation_base_url or "http://127.0.0.1:11434",
+            )
+    config = load_entity_config()
     supervisor = EntitySupervisor(
         lock_path=runtime_dir / "entity-daemon.lock",
         port=port,
@@ -36,6 +54,7 @@ async def _run(
         cognition_provider=cognition_provider,
         cognition_model_name=cognition_model,
         conversation_generator=conversation_generator,
+        identity_file=config.identity_file,
     )
     if voice_model and voice_voices:
         from sylphy_entity.voice.providers import KokoroOnnxProvider, SoundDeviceOutput
@@ -72,6 +91,23 @@ def main() -> None:
         help="Local Ollama URL (loopback only; default: http://127.0.0.1:11434)",
     )
     parser.add_argument("--conversation-model", help="Enable local conversational replies using Ollama (independent of autonomy/sandbox)")
+    parser.add_argument(
+        "--conversation-provider",
+        choices=["ollama", "llama.cpp"],
+        default="ollama",
+        help="Conversation model provider (default: ollama)",
+    )
+    parser.add_argument(
+        "--conversation-base-url",
+        default=None,
+        help="Base URL for the conversation provider (default: ollama http://127.0.0.1:11434 or llama.cpp http://127.0.0.1:9931)",
+    )
+    parser.add_argument(
+        "--conversation-thinking",
+        choices=["on", "off"],
+        default="on",
+        help="Enable Gemma thinking for the llama.cpp conversation provider (default: on)",
+    )
     parser.add_argument("--voice-model", help="Path to local Kokoro ONNX model (enables Voice Output)")
     parser.add_argument("--voice-voices", help="Path to local Kokoro voices .bin file")
     parser.add_argument(
@@ -96,6 +132,8 @@ def main() -> None:
             args.port, args.sandbox_root, args.reconcile_interval, args.autonomy,
             args.cognition_model, args.cognition_base_url,
             args.voice_model, args.voice_voices, args.conversation_model,
+            args.conversation_provider, args.conversation_base_url,
+            args.conversation_thinking == "on",
         ))
     except KeyboardInterrupt:
         logging.getLogger(__name__).info("Shutdown requested")
