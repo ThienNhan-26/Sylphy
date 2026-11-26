@@ -6,6 +6,9 @@ import asyncio
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
+import httpx
+
+from sylphy_entity.contracts.conversation import ConversationMessage
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,8 +28,6 @@ class ConversationGenerator:
 class OllamaConversationGenerator(ConversationGenerator):
     """Plain-text chat adapter; it has no tools and cannot create Runtime Intents."""
     def __init__(self, *, model: str, base_url: str = "http://127.0.0.1:11434", client=None):
-        import httpx
-
         parsed = urlsplit(base_url)
         if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or parsed.path not in {"", "/"} or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("Conversation Ollama URL must be plain HTTP loopback")
@@ -89,8 +90,6 @@ class LlamaCppConversationGenerator(ConversationGenerator):
         client: httpx.AsyncClient | None = None,
         thinking_enabled: bool = True,
     ):
-        import httpx
-
         parsed = urlsplit(base_url)
         if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or parsed.path not in {"", "/"} or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("Conversation llama.cpp URL must be plain HTTP loopback")

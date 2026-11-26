@@ -1,10 +1,8 @@
-> **Historical snapshot (2026-11-25).** This audit records the pre-final Phase 2 architecture and prompt state. For the accepted Identity and Conversation behavior, see `PHASE_2_CLOSURE_RECORD.md`.
-
 # SYLPHY Phase 1: Architecture & Authority Audit
 
-**Date:** 2026-11-25
-**Governing authority:** `SYLPHY_MASTER_PLAN_FUTURE_HANDOVER_v3.0.md`
-**Mode:** Read-only investigation; no source code, tests, or configuration modified
+**Date:** 2026-11-25  
+**Governing authority:** `SYLPHY_MASTER_PLAN_FUTURE_HANDOVER_v3.0.md`  
+**Mode:** Read-only investigation; no source code, tests, or configuration modified  
 **Prerequisite:** Stage 0 baseline audit (`docs/rebuild/BASELINE_AUDIT_20261125.md`)
 
 ## 1. Actual Runtime Call Graph

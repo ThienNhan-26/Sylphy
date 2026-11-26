@@ -19,8 +19,8 @@ from sylphy_entity.runtime.supervisor import EntitySupervisor
 
 
 VALID_IDENTITY_TOML = """[identity]
-name = "Sylphy"
-identity = "I am Sylphy, with my own character and way of seeing the world."
+name = "SYLPHY"
+identity = "A local-first AI companion with a consistent character."
 personality = "Gentle and considerate."
 communication_style = "Warm and thoughtful."
 relationship = "Develops through interaction."
@@ -112,8 +112,8 @@ def test_start05_identity_loading_occurs_through_entity_owned_loader(monkeypatch
         captured["identity_path"] = identity_path
         captured["fallback_default"] = kwargs.get("fallback_default")
         return IdentityConfig(
-            name="Sylphy",
-            identity="I am Sylphy, with my own character and way of seeing the world.",
+            name="SYLPHY",
+            identity="A local-first AI companion.",
             personality="Gentle and considerate.",
             communication_style="Warm and thoughtful.",
             relationship="Develops through interaction.",
@@ -139,7 +139,7 @@ def test_start06_missing_and_invalid_identity_behavior_matches_contract(monkeypa
     assert identity.name == "Sylphy"  # deterministic fallback
 
     invalid_file = tmp_path / "invalid.toml"
-    invalid_file.write_text('[identity]\nname = "Sylphy"\n', encoding="utf-8")
+    invalid_file.write_text('[identity]\nname = "SYLPHY"\n', encoding="utf-8")
     monkeypatch.setenv("SYLPHY_IDENTITY_FILE", str(invalid_file))
     resolved_invalid = load_entity_config(tmp_path / "config.toml")
     with pytest.raises(ValueError, match="Missing or empty identity fields"):

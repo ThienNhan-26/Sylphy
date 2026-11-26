@@ -1,5 +1,3 @@
-> **Implementation report (2026-11-25; superseded for overall status).** This report closes S2-004-R3 only and explicitly leaves overall Phase 2 acceptance to the Project Owner. The Owner subsequently accepted Phase 2 with recorded limitations; see `PHASE_2_CLOSURE_RECORD.md`.
-
 # S2-004-R3 — Implementation Report: Entity-Owned Configuration
 
 **Task:** S2-004-R3 — Entity-Owned Configuration Implementation

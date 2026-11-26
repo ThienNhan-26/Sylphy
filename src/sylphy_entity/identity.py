@@ -48,9 +48,11 @@ def load_identity(
     3. identity.toml in the current working directory.
     4. identity.toml in the parent directory.
 
-    If the configured Identity file is missing and fallback_default is true,
-    a deterministic minimal Identity is returned. Invalid TOML or incomplete
-    Identity data remains an explicit error.
+    If the resolved Identity file does not exist, ``fallback_default=True``
+    returns the minimal default identity, including when an explicit or
+    environment-configured path was supplied. With ``fallback_default=False``,
+    a missing configured or default file raises ``FileNotFoundError``.
+    Invalid TOML or missing/invalid required fields always raise ``ValueError``.
 
     Raises:
         FileNotFoundError: A configured path does not exist, or no file
@@ -181,9 +183,8 @@ def _resolve_existing_path(path_value: Path | str) -> Path | None:
 def _minimal_default_identity() -> IdentityConfig:
     """Return a minimal fallback matching the canonical Identity direction.
 
-    This fallback is used when no Identity file is available and the caller
-    explicitly allows fallback. Invalid TOML and incomplete Identity data
-    remain errors.
+    This fallback is used only when no explicit or environment path was
+    configured and no identity.toml file was found.
     """
 
     return IdentityConfig(
