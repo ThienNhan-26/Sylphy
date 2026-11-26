@@ -68,6 +68,7 @@ class EntitySupervisor:
         cognition_model_name: str | None = None,
         voice_capability: VoiceCapability | None = None,
         conversation_generator=None,
+        identity_file: str | Path | None = "identity.toml",
     ) -> None:
         if not 0 <= port <= 65535:
             raise ValueError("port must be between 0 and 65535")
@@ -118,14 +119,22 @@ class EntitySupervisor:
         self._avatar_presentation: dict[str, Any] = {
             "revision": 0, "behavior": "idle", "commands": []
         }
+        from sylphy_entity.identity import load_identity
         from sylphy_entity.memory.repository import MemoryRepository
         from sylphy_entity.memory.recall import MemoryRecallService
         from sylphy_entity.interaction.conversation_runtime import ConversationRuntime
+
+        # Load identity configuration using the configured path (from config.toml,
+        # environment variable, or fallback to default identity.toml)
+        identity = load_identity(identity_path=identity_file,
+                                 fallback_default=True)
+
         self._conversation = ConversationRuntime(
             publisher=self, event_store=self._event_store,
             generator=conversation_generator,
             memory=MemoryRecallService(MemoryRepository(self._database)),
             voice=self._voice_capability,
+            identity=identity,
         )
         self._cognition_tasks: dict[str, asyncio.Task[None]] = {}
         self._cognition_requested_ids: set[str] = set()
