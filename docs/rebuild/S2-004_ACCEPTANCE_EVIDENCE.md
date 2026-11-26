@@ -1,5 +1,3 @@
-> **Historical evidence snapshot (2026-11-25).** This document predates the final Entity-owned configuration implementation and final Identity integration. Its earlier call paths and test counts are not the final Phase 2 acceptance record; see `PHASE_2_CLOSURE_RECORD.md`.
-
 # S2-004 — Read-Only Acceptance Evidence Audit
 
 **Audit Date:** 2026-11-25

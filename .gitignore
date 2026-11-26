@@ -37,3 +37,4 @@ control.token
 entity-daemon.lock
 entity_runtime.sqlite3*
 .andromity/
+.aider*

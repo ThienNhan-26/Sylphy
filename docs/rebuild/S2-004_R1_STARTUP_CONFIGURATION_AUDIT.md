@@ -1,5 +1,3 @@
-> **Historical audit (2026-11-25).** This read-only audit predates the approved S2-004-R2 decision and S2-004-R3 implementation. The adopted architecture is recorded in `ADR-S2-004_R2.md`; final Phase 2 status is in `PHASE_2_CLOSURE_RECORD.md`.
-
 # S2-004-R1 — Entity Runtime Startup & Configuration Architecture Audit
 
 **Audit Date:** 2026-11-25

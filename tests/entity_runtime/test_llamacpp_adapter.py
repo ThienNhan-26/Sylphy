@@ -658,8 +658,9 @@ async def test_identity_reaches_llamacpp_http_payload_unchanged(tmp_path):
     identity = IdentityConfig(
         name="SYLPHY_TEST_IDENTITY",
         identity=(
-            "I am Sylphy. I have my own character, thoughts, wishes, "
-            "and way of seeing the world."
+            "A local-first AI companion with a consistent character and bounded "
+            "initiative. SYLPHY is under development and does not claim consciousness, "
+            "hidden activity, or capabilities the application does not have."
         ),
         personality="Gentle and considerate without being timid or submissive.",
         communication_style="Use warm, natural, thoughtful language.",

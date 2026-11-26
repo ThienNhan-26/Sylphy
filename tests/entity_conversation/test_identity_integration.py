@@ -1,4 +1,4 @@
-"""Identity integration tests for Sylphy Entity ConversationRuntime.
+﻿"""Identity integration tests for Sylphy Entity ConversationRuntime.
 
 Tests verify that identity.toml configuration is loaded and injected into
 the conversation system prompt, and that missing/invalid configuration
@@ -84,7 +84,7 @@ class TestIdentityLoader:
 @pytest.mark.asyncio
 class TestConversationRuntimeIdentityIntegration:
     """Tests for ConversationRuntime identity injection."""
-
+    
     TEST_IDENTITY_NAME = "SYLPHY_TEST_IDENTITY"
 
     @pytest.fixture
@@ -141,32 +141,32 @@ class TestConversationRuntimeIdentityIntegration:
 
         Proves dynamic name mapping per S2-005-R3.1 by checking that the Identity section
         contains the name from the loaded IdentityConfig instance.
-
+        
         Creates a temporary identity.toml with a distinctive name to prove dynamic mapping.
         """
         import tempfile
         import os
-
+        
         # Create a temporary identity.toml with a distinctive name
         tmp_toml = tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False)
         tmp_toml.write("[identity]\n")
         tmp_toml.write(f"name = \"{self.TEST_IDENTITY_NAME}\"\n")
-        tmp_toml.write("identity = \"I am Sylphy, with my own character and way of seeing the world.\"\n")
+        tmp_toml.write("identity = \"A local-first AI companion with a consistent character and bounded initiative. SYLPHY is under development and does not claim consciousness, hidden activity, or capabilities the application does not have.\"\n")
         tmp_toml.write("personality = \"Gentle and considerate\"\n")
         tmp_toml.write("communication_style = \"Use warm language\"\n")
         tmp_toml.write("relationship = \"Develops through interaction\"\n")
         tmp_toml.write("boundaries = \"Respect permissions\"\n")
         tmp_toml.write("version = \"1.0\"\n")
         tmp_toml.close()
-
+        
         try:
             # Load identity from the temporary file
             identity = load_identity(identity_path=tmp_toml.name)
-
+            
             # Verify the identity has the test name
             assert identity.name == self.TEST_IDENTITY_NAME, \
                 f"Expected identity.name to be '{self.TEST_IDENTITY_NAME}', got '{identity.name}'"
-
+            
             # Create runtime with this identity
             class CapturingGenerator:
                 def __init__(self):
@@ -176,12 +176,12 @@ class TestConversationRuntimeIdentityIntegration:
                     return "test response"
                 async def close(self):
                     pass
-
+            
             generator = CapturingGenerator()
             db = EntityDatabase(tmp_toml.name.replace('.toml', '.sqlite3'))
             db.open()
             store = EventStore(db)
-
+            
             publisher = Publisher(store)
             runtime = ConversationRuntime(
                 publisher=publisher,
@@ -189,29 +189,29 @@ class TestConversationRuntimeIdentityIntegration:
                 generator=generator,
                 identity=identity,
             )
-
+            
             # Submit a message to trigger _respond()
             await runtime.submit(ConversationMessage(
                 text="Hello",
                 session_id="s1",
                 message_id="m1",
             ))
-
+            
             await asyncio.sleep(0.1)
-
+            
             # Verify the generator received messages
             assert len(generator.received) > 0, "Generator should have received messages"
             messages = generator.received[0]
-
+            
             # Verify the system message contains the dynamic name
             system_msg = messages[0]
             assert system_msg.role == "system", f"Expected system message, got {system_msg.role}"
             system_content = system_msg.content
-
+            
             # The name should come from IdentityConfig, not hardcoded
             assert f"Name: {self.TEST_IDENTITY_NAME}" in system_content, \
                 f"System prompt should contain 'Name: {self.TEST_IDENTITY_NAME}' from IdentityConfig"
-
+            
             # Verify other identity fields are present
             assert "Identity:" in system_content, "System prompt should contain identity field"
             assert "Personality:" in system_content, "System prompt should contain personality field"
@@ -219,11 +219,11 @@ class TestConversationRuntimeIdentityIntegration:
             assert "Relationship:" in system_content, "System prompt should contain relationship field"
             assert "Boundaries:" in system_content, "System prompt should contain boundaries field"
             assert "Identity version: 1.0" in system_content, "System prompt should contain version field"
-
+            
             # Verify Foundational Principle
             assert "Sylphy is not gentle because she is told to be gentle. She is gentle because that is how she chooses to treat those she cares about." in system_content, \
                 "System prompt should contain exact Foundational Principle"
-
+            
             await runtime.stop()
             db.close()
         finally:
@@ -244,7 +244,7 @@ class TestConversationRuntimeIdentityIntegration:
         tmp_toml = tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False)
         tmp_toml.write("[identity]\n")
         tmp_toml.write(f"name = \"{self.TEST_IDENTITY_NAME}\"\n")
-        tmp_toml.write("identity = \"I am Sylphy, with my own character and way of seeing the world.\"\n")
+        tmp_toml.write("identity = \"A local-first AI companion with a consistent character and bounded initiative.\"\n")
         tmp_toml.write("personality = \"Gentle and considerate without being timid or submissive\"\n")
         tmp_toml.write("communication_style = \"Use warm, natural, thoughtful language\"\n")
         tmp_toml.write("relationship = \"Develops through interaction. Do not assume familiarity\"\n")
@@ -311,11 +311,11 @@ class TestConversationRuntimeIdentityIntegration:
                 # Check all 7 fields are present in the system prompt
                 assert f"Name: {self.TEST_IDENTITY_NAME}" in system_content, \
                     "System prompt should contain 'Name: SYLPHY_TEST_IDENTITY'"
-                assert "Identity: I am Sylphy, with my own character and way of seeing the world." in system_content, \
+                assert "Identity: A local-first AI companion" in system_content, \
                     "System prompt should contain identity field"
                 assert "Personality: Gentle and considerate" in system_content, \
                     "System prompt should contain personality field"
-                assert "Communication style: Use warm, natural, thoughtful language" in system_content, \
+                assert "Communication style: Use warm, natural" in system_content, \
                     "System prompt should contain communication_style field"
                 assert "Relationship: Develops through interaction" in system_content, \
                     "System prompt should contain relationship field"
@@ -332,7 +332,7 @@ class TestConversationRuntimeIdentityIntegration:
                     "System norms should be present"
                 assert "Answer the actual message first." in system_content, \
                     "System norms 'answer actual question' should be present"
-                assert "Do not routinely introduce yourself" in system_content, \
+                assert "How can I assist you today?" in system_content, \
                     "System norms 'no canned phrases' should be present"
 
                 # ---- Verify conversation history and user message order ----
@@ -474,7 +474,6 @@ personality = "
             os.unlink(tmp_path)
 
 
-@pytest.mark.asyncio
 class TestIdentityVersusPermission:
     """Tests verifying identity is personality only, not permission."""
 

@@ -1,5 +1,3 @@
-> **Historical blocker record (2026-11-25).** The `load_config` startup blocker documented here was addressed by S2-004-R3. This file is retained as investigation history; see the ADR, implementation report, and `PHASE_2_CLOSURE_RECORD.md` for the resolved state.
-
 # S2-004 — Blocking Evidence Clarification: daemon.py load_config
 
 **Audit Date:** 2026-11-25
