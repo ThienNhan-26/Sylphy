@@ -123,9 +123,21 @@ The Project Owner fixed Gemma 4 Artemis and llama.cpp and directed that model/pr
 
 This is a recorded scope deviation from the original Master Plan deliverable for benchmark procedure, raw results and comparative report. It must not be described as a completed benchmark.
 
-### SD-02 — Legacy Ollama compatibility retained
+### SD-02 — Legacy Ollama compatibility retained (Owner-confirmed)
 
-Ollama adapter code and a manually selectable legacy path remain in the source. The intended/default runtime is llama.cpp. Retaining compatibility code is not a decision to resume provider experimentation.
+On 2026-11-28, the Project Owner explicitly confirmed the following Phase 3 decision:
+
+> Keep the Ollama compatibility code, but do not use it in the default runtime.
+
+This confirms the intended compatibility posture. The default Conversation and Cognition providers remain `llama.cpp`; Ollama remains available only as an explicit legacy selection. Retaining the adapter and CLI compatibility path is not permission to resume provider experimentation and does not alter the fixed Gemma 4 Artemis / llama.cpp runtime decision.
+
+**Handling plan:**
+1. Preserve `OllamaCognition` and `OllamaConversationGenerator` as legacy compatibility code; do not delete or rewrite them in Phase 3.
+2. Keep `llama.cpp` as the default for both `--conversation-provider` and `--cognition-provider`.
+3. Keep the legacy Ollama selection explicit and opt-in; do not select it automatically through fallback or provider discovery.
+4. Do not add Ollama runtime tests, benchmarks, model downloads, or provider comparisons as new Phase 3 work. Existing compatibility code may remain covered by its pre-existing tests.
+5. Verify the defaults in the daemon CLI and record them in the runtime configuration. No code change is required if the current source continues to satisfy these conditions.
+6. Treat any future removal of Ollama compatibility as a separate Owner-approved change, not as part of this Phase 3 closure.
 
 ### SD-03 — ZIP rebuild has no Git history
 
