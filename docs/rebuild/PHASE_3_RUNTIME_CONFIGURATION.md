@@ -29,9 +29,15 @@ The provider instance is injected into `EntitySupervisor`; Entity Runtime remain
 
 ## 3. Legacy compatibility
 
-Ollama remains present as a legacy-only provider option. The daemon CLI defaults both Conversation and Cognition providers to llama.cpp. The intended runtime does not require Ollama and does not require a separate `--cognition-model`.
+Ollama remains present as a legacy compatibility option by explicit Project Owner decision (2026-11-28): keep the code, but do not use it in the default runtime.
 
-The continued existence of the legacy branch is recorded for compatibility; it does not change the Owner's fixed provider decision.
+Verified CLI defaults in the reviewed daemon source:
+- `--conversation-provider`: `llama.cpp`.
+- `--cognition-provider`: `llama.cpp`.
+
+Ollama can only be selected explicitly through the legacy provider option; it is not an automatic fallback. The intended runtime does not require Ollama and does not require a separate `--cognition-model`.
+
+**Phase 3 handling:** preserve the existing Ollama adapters and explicit legacy selection without further provider work. Do not benchmark, reactivate, or expand Ollama support. Revisit removal only through a separate Owner-approved decision.
 
 ## 4. Resource and performance evidence
 
